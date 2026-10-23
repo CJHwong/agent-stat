@@ -17,8 +17,12 @@ final class SessionStore {
         let started: String?
     }
 
-    /// A session with no event for this long drops out of the panel.
-    static let visibleWindowSeconds = 12 * 3600
+    /// A session with no event for this long drops out of the panel, unless its
+    /// process is known alive. A quiet Codex can sit at a prompt for a day.
+    static let visibleWindowSeconds = 24 * 3600
+    /// A failure asks for you, but not forever. After half a day it leaves, so old
+    /// runs that ended without a Stop do not pile up in the panel.
+    static let failureWindowSeconds = 12 * 3600
     /// A session that finished or was closed clears out this fast, so closing a
     /// terminal makes its row go away instead of lingering. A failure is the
     /// exception and stays for the normal window, because it asks for you.
@@ -278,7 +282,15 @@ final class SessionStore {
 
     private func shouldShow(_ session: Session, now: Int) -> Bool {
         if isDismissed(session) { return false }
-        if now - session.lastTs > Self.visibleWindowSeconds { return false }
+        // A live process is the better clock than the last event: a Codex left at
+        // its prompt writes nothing for hours yet is still a session you can return
+        // to. Without a liveness answer, the window still clears a stale row.
+        if now - session.lastTs > Self.visibleWindowSeconds, session.alive != true {
+            return false
+        }
+        if session.state == .failed, now - session.lastTs > Self.failureWindowSeconds {
+            return false
+        }
         if terminalStates.contains(session.state), session.state != .failed {
             // Finished or closed. Clear out quickly. For a session on another
             // machine the last event is the only clock available. A failure is the

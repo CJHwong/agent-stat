@@ -411,6 +411,45 @@ class StreamEventsTests(unittest.TestCase):
         self.assertEqual(status["titles"], {"quiet": "Renamed"})
         self.assertEqual(len((self.hosts / TODAY).read_bytes().splitlines()), 1)
 
+    def test_titles_cover_quiet_sessions_past_the_alive_window(self):
+        old = time.time() - 13 * 3600
+        self.write(content=record(agent="codex", session="old", event="Stop", ts=old))
+        profile = self.directory / ".codex"
+        profile.mkdir()
+        (profile / "session_index.jsonl").write_text(
+            json.dumps({"id": "old", "thread_name": "A quiet name"}) + "\n"
+        )
+        consumer = Consumer(self.directory, home=self.directory)
+        self.addCleanup(consumer.close)
+        self.assertEqual(consumer.next("status")["titles"], {"old": "A quiet name"})
+
+    def test_title_falls_back_to_the_first_user_message(self):
+        old = time.time() - 13 * 3600
+        self.write(content=record(agent="codex", session="quiet", event="Stop", ts=old))
+        profile = self.directory / ".codex"
+        rollout = profile / "sessions/2026/10/23"
+        rollout.mkdir(parents=True)
+        (rollout / "rollout-2026-10-23T00-00-00-quiet.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Imagine a tiny helper"}
+                        ],
+                    },
+                }
+            )
+            + "\n"
+        )
+        consumer = Consumer(self.directory, home=self.directory)
+        self.addCleanup(consumer.close)
+        self.assertEqual(
+            consumer.next("status")["titles"], {"quiet": "Imagine a tiny helper"}
+        )
+
     def test_stream_uses_byte_offsets_and_complete_lines(self):
         first = record(message="繁體中文")
         second = record(session="second")

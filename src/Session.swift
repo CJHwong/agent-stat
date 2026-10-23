@@ -64,6 +64,9 @@ struct Session {
     /// When the app first noticed this session's process was gone. Used to clear
     /// the row shortly after a session is closed.
     var goneSince: Int?
+    /// Whether the session reported anything before an end record. A bare SessionEnd
+    /// from a Codex app-server session is not a failed turn; it is not a row at all.
+    var sawActivity = false
 
     init(key: SessionKey) {
         self.key = key
@@ -81,6 +84,7 @@ struct Session {
     mutating func apply(_ record: Record) {
         copy(record)
         fold(record)
+        if record.event != "SessionEnd", record.event != "RunEnd" { sawActivity = true }
     }
 
     /// Take the fields an event carries, when it carries them.
@@ -153,8 +157,9 @@ struct Session {
             // record that closes such a row on another machine.
             //
             // Deliberately not SessionEnd: codex never sent one, and a record
-            // that borrowed that name would read as codex's own report.
-            end(record, inferFailure: false)
+            // that borrowed that name would read as codex's own report. A run that
+            // ends before Codex sent Stop did not finish, so it fails like one.
+            end(record, inferFailure: true)
         default:
             // SubagentStart, SubagentStop, and anything a newer writer adds.
             // Recognized, deliberately not a state change and not an ask.
@@ -166,11 +171,12 @@ struct Session {
     ///
     /// Claude sends StopFailure and then SessionEnd, and that pair is the only report
     /// of an API error, so the failure must survive the close. Codex sends no failure
-    /// event, so an end while a turn is in flight is the failure: a completed turn
-    /// always sends Stop first. A RunEnd from an orchestrator closes the row the same
-    /// way, but only Codex's own end infers a failure.
+    /// event, so an end while a turn is in flight, or before the first turn, is the
+    /// failure: a completed turn always sends Stop first. Both SessionEnd and RunEnd
+    /// infer it for Codex.
     private mutating func end(_ record: Record, inferFailure: Bool) {
-        if inferFailure, agent == "codex", state == .running || state == .waiting {
+        if inferFailure, agent == "codex", sawActivity,
+           state == .starting || state == .running || state == .waiting {
             state = .failed
             askedAt = record.timestamp
             // The end record carries no error text. An older message would read as

@@ -114,7 +114,7 @@ func testOrderingAndWindow() {
     print("ordering and visibility window")
     let store = SessionStore(localHost: HOST)
     let now = 100_000
-    let ancientTs = now - (13 * 3600)
+    let ancientTs = now - SessionStore.visibleWindowSeconds - 3600
     store.apply(decode(#"{"ts":99990,"event":"Stop","session":"idle","message":"m"}"#), host: HOST)
     store.apply(decode(#"{"ts":99991,"event":"PermissionRequest","session":"wait","tool":"Bash"}"#), host: HOST)
     store.apply(decode(#"{"ts":99992,"event":"PreToolUse","session":"run","tool":"Bash"}"#), host: HOST)
@@ -123,7 +123,7 @@ func testOrderingAndWindow() {
 
     let rows = store.visible(now: now).map(\.key.id)
     checkEqual(rows, ["wait", "idle", "run", "over"], "attention first, then running, then finished")
-    check(!rows.contains("ancient"), "session older than 12 hours is hidden")
+    check(!rows.contains("ancient"), "session older than the window is hidden")
 
     // Two machines, same session id, must stay two sessions.
     store.apply(decode(#"{"ts":99994,"event":"Stop","session":"shared"}"#), host: HOST)
@@ -381,6 +381,7 @@ testIconStepper()
 testTickCadence()
 testClaudeFailure()
 testCodexFailure()
+testCodexEarlyEnd(); testQuietLiveSession(); testOldFailure()
 testFailureLifecycle()
 func testPlacement() {
     print("panel placement")

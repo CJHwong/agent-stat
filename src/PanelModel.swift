@@ -150,7 +150,7 @@ final class PanelModel: ObservableObject {
         // a record that changes a row still redraws at once.
         let count = built.reduce(0) { $0 + $1.rows.count }
         let installed = FileManager.default.fileExists(atPath: eventsDirectory.path)
-        // Deliberately not "no sessions in the last 12 hours": a row you dismissed
+        // Deliberately not "no sessions in the visible window": a row you dismissed
         // also leaves nothing to show, and that claim would be false.
         let hint = built.isEmpty && !installed
             ? "No events directory yet.\nRun install.py --apply from the agent-stat repo."

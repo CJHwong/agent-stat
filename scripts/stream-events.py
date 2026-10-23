@@ -274,7 +274,10 @@ def session_alive(record: dict, processes: dict) -> bool:
     return isinstance(started, str) and " ".join(started.split()) == processes[pid]
 
 
-def codex_titles(sessions: dict) -> dict:
+_FALLBACK_TITLES: dict[str, str] = {}
+
+
+def codex_titles(sessions: dict, quiet: set[str]) -> dict:
     profiles = set(Path.home().glob(".codex*"))
     if os.environ.get("CODEX_HOME"):
         profiles.add(Path(os.environ["CODEX_HOME"]))
@@ -291,7 +294,59 @@ def codex_titles(sessions: dict) -> dict:
         for session, name in read_titles(path, sessions).items():
             if session not in titles or name[1] >= titles[session][1]:
                 titles[session] = name
+    for session in sessions:
+        if session in titles or session not in quiet:
+            continue
+        for profile in sorted(profiles):
+            title = rollout_title(profile, session)
+            if title:
+                titles[session] = (title, float("-inf"))
+                break
     return {session: name[0] for session, name in titles.items()}
+
+
+def rollout_title(profile: Path, session: str) -> str | None:
+    """The first user message, when the index has no name for the session.
+
+    Codex names a thread from the first prompt. An older session can miss the
+    index entry; the rollout still holds the prompt, so this is the same name the
+    UI would have shown. The answer is cached for the life of the helper.
+    """
+    cached = _FALLBACK_TITLES.get(session)
+    if cached is not None:
+        return cached
+    pattern = f"sessions/*/*/*/rollout-*{session}*.jsonl"
+    for path in sorted(profile.glob(pattern)):
+        try:
+            with path.open(encoding="utf-8") as stream:
+                for line in stream:
+                    try:
+                        entry = json.loads(line)
+                    except ValueError:
+                        continue
+                    if not isinstance(entry, dict):
+                        continue
+                    payload = entry.get("payload")
+                    if not isinstance(payload, dict) or payload.get("role") != "user":
+                        continue
+                    content = payload.get("content")
+                    text = ""
+                    if isinstance(content, list):
+                        text = " ".join(
+                            part.get("text", "")
+                            for part in content
+                            if isinstance(part, dict)
+                            and isinstance(part.get("text"), str)
+                        )
+                    elif isinstance(payload.get("message"), str):
+                        text = payload["message"]
+                    text = re.sub(r"[\n\r\t]+", " ", text).strip()
+                    if text:
+                        _FALLBACK_TITLES[session] = text[:200]
+                        return _FALLBACK_TITLES[session]
+        except (OSError, UnicodeError):
+            continue
+    return None
 
 
 def name_timestamp(value: object) -> float:
@@ -347,7 +402,9 @@ def emit_status(sessions: dict) -> None:
             "type": "status",
             "time": int(now),
             "alive": alive,
-            "titles": codex_titles(recent),
+            "titles": codex_titles(
+                sessions, {session for session in sessions if session not in recent}
+            ),
         }
     )
 

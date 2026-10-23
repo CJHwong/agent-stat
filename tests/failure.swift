@@ -48,6 +48,62 @@ func testCodexFailure() {
                "a claude end mid-turn does not infer a failure")
 }
 
+/// A model at capacity fails before the first turn, and an orchestrator can end
+/// a run that never sent Stop. Both are failures, not clean ends.
+func testCodexEarlyEnd() {
+    print("a codex end before a turn")
+    let startup = SessionStore(localHost: HOST)
+    startup.apply(decode(#"{"ts":250,"event":"SessionStart","agent":"codex","session":"s","agent_pid":5}"#), host: HOST)
+    startup.apply(decode(#"{"ts":260,"event":"SessionEnd","agent":"codex","session":"s","reason":"other"}"#), host: HOST)
+    checkEqual(startup.sessions[SessionKey(host: HOST, id: "s")]!.state, .failed,
+               "a codex end before the first turn is a failure")
+    checkEqual(startup.attentionCount(now: 261), 1, "and it needs you")
+
+    // A Codex app-server session can send only an end. It is not a failed turn.
+    let bare = SessionStore(localHost: HOST)
+    bare.apply(decode(#"{"ts":240,"event":"SessionEnd","agent":"codex","session":"bare"}"#), host: HOST)
+    checkEqual(bare.sessions[SessionKey(host: HOST, id: "bare")]!.state, .ended,
+               "a codex end with no start is not a failure")
+    checkEqual(bare.visible(now: 240 + SessionStore.finishedGraceSeconds + 1).count, 0,
+               "and it leaves after the end grace")
+
+    let run = SessionStore(localHost: HOST)
+    run.apply(decode(#"{"ts":270,"event":"SessionStart","agent":"codex","session":"r","agent_pid":6}"#), host: HOST)
+    run.apply(decode(#"{"ts":280,"event":"UserPromptSubmit","agent":"codex","session":"r"}"#), host: HOST)
+    run.apply(decode(#"{"ts":290,"event":"RunEnd","session":"r"}"#), host: HOST)
+    checkEqual(run.sessions[SessionKey(host: HOST, id: "r")]!.state, .failed,
+               "a codex run ended mid-turn is a failure")
+    checkEqual(run.attentionCount(now: 291), 1, "and it needs you")
+}
+
+/// A quiet session stays while its process is known alive, and leaves otherwise.
+func testQuietLiveSession() {
+    print("a quiet live session")
+    let now = 1_000_000
+    let last = now - SessionStore.visibleWindowSeconds - 3600
+    let store = SessionStore(localHost: HOST)
+    store.apply(decode(#"{"ts":\#(last),"event":"Stop","session":"quiet","agent_pid":1}"#), host: HOST)
+    store.reapLocal(now: last + 1) { _, _ in true }
+    checkEqual(store.visible(now: now).map(\.key.id), ["quiet"],
+               "a live quiet session stays past the window")
+
+    let dead = SessionStore(localHost: HOST)
+    dead.apply(decode(#"{"ts":\#(last),"event":"Stop","session":"quiet","agent_pid":2}"#), host: HOST)
+    dead.reapLocal(now: last + 1) { _, _ in false }
+    checkEqual(dead.visible(now: now).count, 0, "a dead quiet session still leaves")
+}
+
+/// A failure asks for you for half a day, then leaves.
+func testOldFailure() {
+    print("an old failure leaves")
+    let now = 2_000_000
+    let store = SessionStore(localHost: HOST)
+    store.apply(decode(#"{"ts":\#(now - SessionStore.failureWindowSeconds - 1),"event":"StopFailure","agent":"claude","session":"old"}"#), host: HOST)
+    checkEqual(store.visible(now: now).count, 0, "a failure past its window leaves")
+    store.apply(decode(#"{"ts":\#(now - 60),"event":"StopFailure","agent":"claude","session":"new"}"#), host: HOST)
+    checkEqual(store.visible(now: now).map(\.key.id), ["new"], "a recent failure stays")
+}
+
 /// A failure stays until you deal with it, and it outranks work in flight.
 func testFailureLifecycle() {
     print("a failure stays")

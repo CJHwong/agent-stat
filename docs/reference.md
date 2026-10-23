@@ -16,7 +16,7 @@ that need you sort to the top.
 
 Red carries one meaning and no other, so a glance down the panel finds every row that
 wants you. Orange is the second colour that needs you: a failure counts in the badge and
-stays until you click it or hide it. Clicking it stops the count but does not turn it
+stays for up to 12 hours, or until you click it or hide it. Clicking it stops the count but does not turn it
 blue, so the row still says the turn failed. Work in flight counts whoever is doing it: a
 turn that finished while its subagents run on stays green, keeps pulsing, and stays out
 of the badge until its last subagent stops. A session that vanished without an end record
@@ -128,7 +128,8 @@ It waits for a complete line before it adds a record to the cache.
 |---|---|---|
 | `finishedGraceSeconds` | 10 | A row whose session reported an end stays visible this long, then clears. |
 | `crashedGraceSeconds` | 60 | A local or connected remote row whose process vanished without an end record. |
-| `visibleWindowSeconds` | 12 hours | After this a session leaves the panel even if it never reported an end. |
+| `visibleWindowSeconds` | 24 hours | After this a session leaves the panel, unless its process is known alive. |
+| `failureWindowSeconds` | 12 hours | A failure leaves after this even if you never clicked it. |
 
 All three are constants at the top of `src/SessionStore.swift`.
 
