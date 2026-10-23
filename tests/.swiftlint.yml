@@ -1,0 +1,16 @@
+# This directory holds one flat list of cases, so the size limits that keep a source
+# file readable do not apply here, and the fixtures are one JSON record per line,
+# which is how a record reads.
+
+file_length:
+  warning: 900
+  error: 1200
+
+line_length:
+  warning: 170
+  error: 200
+
+# A test whose own fixture does not decode should stop loudly. try! is how this file
+# says that, and a failable path here would hide a broken fixture instead.
+disabled_rules:
+  - force_try

@@ -1,0 +1,85 @@
+# The commit gate. Run it by hand at any time with: prek run --all-files
+#
+# The linters are the tools already installed on this machine (language: system), so
+# nothing is pinned and nothing is downloaded. The one exception is commitlint, which
+# is a Node hook and is pinned on purpose.
+#
+# The two formatters stay out on purpose, and not because they are noisy:
+# swift-format would rewrite every Swift file to a two space indent, and shfmt
+# expands the compact failure guards the shell scripts use by hand. Their lint halves
+# are in: shellcheck reports nothing here, and swiftlint reports nothing under
+# --strict.
+
+default_install_hook_types: [pre-commit, pre-push, commit-msg]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: detect-private-key
+
+  # Conventional Commits at the commit-msg stage, via commitlint itself rather than a
+  # re-implementation of it, so the rules cannot drift from the ones everyone else
+  # means by that word: config-conventional also enforces subject-case,
+  # subject-full-stop and header-max-length. Its defaultIgnores already exempt the
+  # subjects git generates, so no exemption list is kept here.
+  #
+  # Pinned to a commit rather than the v9.26.0 tag, because a tag is mutable and this
+  # hook runs on every commit on this machine. `prek autoupdate` rewrites the pin and
+  # the trailing comment together.
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: 25d0a52aa8bc0fc242613346792dc8d726c13347  # v9.26.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        # Both packages are pinned, and both are needed: the CLI alone leaves the
+        # ruleset in .commitlintrc.yaml unresolvable, which fails as a module error
+        # rather than a rule violation. The upstream hook declares @commitlint/cli as
+        # a caret range, so an unpinned one resolves to whatever 21.x was newest the
+        # first time this hook environment was built.
+        additional_dependencies:
+          - '@commitlint/cli@21.2.2'
+          - '@commitlint/config-conventional@21.2.2'
+
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check
+        entry: ruff check --fix --force-exclude
+        language: system
+        types: [python]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --force-exclude
+        language: system
+        types: [python]
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck -x
+        language: system
+        types: [shell]
+      - id: hook-guards
+        name: hook scripts parse, with no apostrophe in a comment
+        entry: scripts/guard-hooks.sh
+        language: system
+        files: ^hooks/.*\.sh$
+        pass_filenames: false
+      - id: swiftlint
+        name: swiftlint
+        entry: swiftlint lint --strict --quiet
+        language: system
+        files: \.swift$
+        pass_filenames: false
+      - id: unit-tests
+        name: unit tests and a build
+        entry: bash scripts/test.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

@@ -1,0 +1,9 @@
+# SwiftLint configuration. Every line here is a deliberate departure from the
+# defaults, and every departure has a reason.
+
+# The model is a flat fold: one statement per field, one switch case per event. The
+# complexity metric counts each of those branches, so a clear switch scores high
+# while nothing is nested. The threshold catches nesting, which is what it is for.
+cyclomatic_complexity:
+  warning: 16
+  error: 25

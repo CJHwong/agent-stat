@@ -1,0 +1,6 @@
+# Conventional Commits, judged by commitlint's own reference ruleset.
+#
+# YAML rather than .js so a Python repo can copy this file unchanged. The rules
+# live upstream: a local override list here is a second place for the ruleset to
+# live, and the two drift the moment one of them is edited.
+extends: ['@commitlint/config-conventional']

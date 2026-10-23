@@ -1,0 +1,52 @@
+{
+  "_": [
+    "Example routes for agent-stat. Copy to ~/.config/agent-stat/routes.json.",
+    "The key is the host name in the event file name, matched exactly.",
+    "events starts the remote stream helper. Install it on that machine first.",
+    "tmux and tab control navigation independently of events.",
+    "Keep this file outside synced folders. Tab names belong to this machine."
+  ],
+  "laptop": {
+    "events": [
+      "ssh",
+      "-o",
+      "ControlMaster=auto",
+      "-o",
+      "ControlPersist=no",
+      "-o",
+      "ControlPath=~/.local/state/agent-stat/ssh-%C",
+      "-T",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=6",
+      "-o",
+      "ClearAllForwardings=yes",
+      "-o",
+      "ServerAliveInterval=5",
+      "-o",
+      "ServerAliveCountMax=3",
+      "laptop",
+      "python3 .local/state/agent-stat/bin/stream-events.py"
+    ],
+    "tmux": [
+      "ssh",
+      "-T",
+      "-o",
+      "ClearAllForwardings=yes",
+      "-o",
+      "ControlMaster=no",
+      "-o",
+      "ControlPersist=no",
+      "-o",
+      "ControlPath=~/.local/state/agent-stat/ssh-%C",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=6",
+      "laptop",
+      "/opt/homebrew/bin/tmux"
+    ],
+    "tab": "laptop"
+  }
+}
