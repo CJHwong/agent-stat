@@ -33,6 +33,10 @@ struct Session {
     /// terminal tab keeps the shell cwd, which only changes when you change it.
     /// Matching on the drifting value misses the tab that is right in front of
     /// you.
+    ///
+    /// Anchored to the first folder of the agent process. An agent re-fires
+    /// SessionStart during a session, and the cwd it carries then is the agent
+    /// folder, so a later start must not move this anchor.
     var launchCwd: String = ""
     var state: SessionState = .starting
     var model: String?
@@ -91,19 +95,25 @@ struct Session {
     private mutating func copy(_ record: Record) {
         if record.timestamp > lastTs { lastTs = record.timestamp }
         if let agent = record.agent, !agent.isEmpty { self.agent = agent }
+        // A new process is a new launch, so it gets a new anchor. This must run
+        // before the folder copy below, or the anchor keeps the old folder.
+        if let pid = record.agentPid, pid > 0 {
+            if agentPid != pid {
+                agentStart = nil
+                launchCwd = ""
+            }
+            agentPid = pid
+        }
         if let cwd = record.cwd, !cwd.isEmpty {
-            // The first folder seen stands in when SessionStart was missed, which
-            // happens for a session that was already running when the hooks went in.
+            // The first folder of this process stands in as the launch folder,
+            // which also covers a session that was already running when the hooks
+            // went in. A later start must not move it: see fold().
             if launchCwd.isEmpty { launchCwd = cwd }
             self.cwd = cwd
         }
         if let model = record.model { self.model = model }
         if let title = record.title, !title.isEmpty { self.title = title }
         if let turn = record.turn { self.turn = turn }
-        if let pid = record.agentPid, pid > 0 {
-            if agentPid != pid { agentStart = nil }
-            agentPid = pid
-        }
         if let start = record.agentStart, !start.isEmpty { agentStart = start }
         if let term = record.term, !term.isEmpty { self.term = term }
         if let pane = record.tmux, !pane.isEmpty { tmuxPane = pane }
@@ -114,8 +124,10 @@ struct Session {
     private mutating func fold(_ record: Record) {
         switch record.event {
         case "SessionStart":
-            // Authoritative: this is where the session was launched.
-            if let cwd = record.cwd, !cwd.isEmpty { launchCwd = cwd }
+            // Not authoritative for the folder. Agents re-fire it during a
+            // session, and the cwd it carries is the agent folder, which follows
+            // a cd inside a tool call. The anchor is the first folder of the
+            // process, taken in copy().
             state = .starting
         case "UserPromptSubmit":
             state = .running

@@ -10,6 +10,38 @@ func testReviewRegressions() {
     testReaderPositions()
     testLivenessWithRetainedHistory()
     testLivenessWindowBoundary()
+    testLaunchFolderAnchor()
+}
+
+/// The launch folder anchors to the agent process, not to the latest start.
+///
+/// A real session re-fired SessionStart many times over its life, and each one
+/// carried the cwd the agent had at that moment. One landed far inside a worktree,
+/// so the click refused with "pane %1757 is at a different folder" while the pane
+/// sat at the repository root.
+func testLaunchFolderAnchor() {
+    print("launch folder anchors to the process")
+    let store = SessionStore(localHost: HOST)
+    let repo = "/Users/you/work/repo"
+    let deep = repo + "/.claude/worktrees/two/app/freight/func/shipment/air_booking/entry/handlers/tests"
+    let stream = [
+        #"{"ts":1,"event":"SessionStart","agent":"claude","agent_pid":383,"agent_start":"t0","session":"s1","cwd":"\#(repo)"}"#,
+        #"{"ts":2,"event":"UserPromptSubmit","agent":"claude","agent_pid":383,"session":"s1","cwd":"\#(repo)/.claude/worktrees/one","turn":"p1"}"#,
+        #"{"ts":3,"event":"SessionStart","agent":"claude","agent_pid":383,"agent_start":"t0","session":"s1","cwd":"\#(deep)"}"#
+    ]
+    for line in stream { store.apply(decode(line), host: HOST) }
+
+    let session = store.sessions[SessionKey(host: HOST, id: "s1")]!
+    checkEqual(session.launchCwd, repo, "a later start does not move the launch folder")
+    checkEqual(session.cwd, deep, "the agent folder still follows the last record")
+    check(TmuxTargeting.folderMatches(session.launchCwd, repo),
+          "the click accepts a pane at the launch folder")
+
+    // A resume is a new process. Its own first folder is the new anchor.
+    store.apply(decode(#"{"ts":4,"event":"SessionStart","agent":"claude","agent_pid":404,"agent_start":"t1","session":"s1","cwd":"/Users/you/work/other"}"#),
+                host: HOST)
+    checkEqual(store.sessions[SessionKey(host: HOST, id: "s1")]!.launchCwd,
+               "/Users/you/work/other", "a new process anchors its own first folder")
 }
 
 func testPermissionCompletion() {
