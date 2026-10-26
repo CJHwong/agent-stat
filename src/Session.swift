@@ -2,7 +2,7 @@ import Foundation
 
 /// What a session is doing, driven only by hook events.
 enum SessionState: String {
-    case starting       // SessionStart seen, no prompt yet
+    case starting       // ready after SessionStart, no work reported yet
     case running        // a turn is in flight
     case waiting        // blocked on a permission prompt
     case idle           // turn finished, waiting on you
@@ -39,6 +39,8 @@ struct Session {
     /// folder, so a later start must not move this anchor.
     var launchCwd: String = ""
     var state: SessionState = .starting
+    /// Claude reuses SessionStart after resume, clear, and compaction.
+    var startSource: String?
     var model: String?
     /// The session's own name, when the agent gave it one. Preferred over the folder
     /// when the panel matches a terminal tab, because it belongs to this session alone.
@@ -129,6 +131,9 @@ struct Session {
             // a cd inside a tool call. The anchor is the first folder of the
             // process, taken in copy().
             state = .starting
+            startSource = record.source
+            tool = nil
+            toolStartedAt = nil
         case "UserPromptSubmit":
             state = .running
             tool = nil

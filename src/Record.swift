@@ -10,6 +10,7 @@ struct Record: Decodable {
     /// The event time, `ts` on the wire.
     let timestamp: Int
     let event: String
+    let source: String?
     let agent: String?
     let agentPid: Int?
     let agentStart: String?
@@ -32,7 +33,7 @@ struct Record: Decodable {
     let agentId: String?
 
     enum CodingKeys: String, CodingKey {
-        case event, agent, session, cwd, turn, model, title, tool, message, term, tmux
+        case event, source, agent, session, cwd, turn, model, title, tool, message, term, tmux
         case timestamp = "ts"
         case agentPid = "agent_pid"
         case agentStart = "agent_start"

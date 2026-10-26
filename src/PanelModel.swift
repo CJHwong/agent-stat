@@ -21,11 +21,12 @@ struct SessionRow: Identifiable {
     /// tmux, which jumps by pane rather than by tab.
     let tab: String?
 
-    /// What the dot says, one meaning per colour.
+    /// The dot separates work, attention, readiness, and terminal states.
     ///
     /// Red waits on you: a finished turn, or an open permission prompt. Clicking
     /// the row deals with it, so the dot turns blue and the row stops counting
-    /// toward the badge; the session's next event makes it red again. Green is
+    /// toward the badge; the session's next event makes it red again.
+    /// Blue also marks a ready session before work resumes. Green is
     /// work in flight, and that includes a turn that finished while its subagents
     /// run on: nobody is waiting on you while work continues. Orange is a failure,
     /// which also waits on you and counts in the badge; clicking it deals with it.
@@ -36,7 +37,8 @@ struct SessionRow: Identifiable {
         if session.isBusy { return .green }
         switch state {
         case .waiting, .idle: return acknowledged ? .blue : .red
-        case .running, .starting: return .green
+        case .starting: return .blue
+        case .running: return .green
         case .failed: return .orange
         case .interrupted: return .purple
         case .ended: return .secondary
@@ -46,7 +48,7 @@ struct SessionRow: Identifiable {
     /// Work in flight, which is what the dot pulses for.
     ///
     /// A session that has not taken a prompt yet stays solid: it is up, it is not
-    /// working, and a green dot that pulses for it would read as busy forever.
+    /// working, so its blue dot stays solid.
     var isWorking: Bool {
         session.isBusy
     }
@@ -252,7 +254,12 @@ final class PanelModel: ObservableObject {
         case .idle:
             return shortMessage(session.lastMessage) ?? "turn finished"
         case .starting:
-            return "starting"
+            switch session.startSource {
+            case "resume": return "resumed"
+            case "clear": return "cleared"
+            case "compact": return "context compacted"
+            default: return "ready"
+            }
         case .failed:
             return shortMessage(session.lastMessage) ?? "API error"
         case .interrupted:

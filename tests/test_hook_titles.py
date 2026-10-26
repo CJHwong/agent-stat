@@ -220,6 +220,12 @@ class HookTitleTests(unittest.TestCase):
         )
         self.assert_record(self.hook(agent="claude"), None)
 
+    def test_claude_start_preserves_source(self):
+        for source in ["startup", "resume", "clear", "compact"]:
+            with self.subTest(source=source):
+                records = self.hook(agent="claude", kind="SessionStart", source=source)
+                self.assertEqual(records[-1].get("source"), source)
+
     def test_claude_never_waits_on_codex_fifo(self):
         os.mkfifo(self.profile / "session_index.jsonl")
         self.assert_record(

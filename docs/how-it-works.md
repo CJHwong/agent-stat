@@ -81,4 +81,8 @@ until that session ends.
 
 Red means a session wants you and you have not dealt with it. Clicking the row deals with
 it, so the dot turns blue and the badge stops counting it, and the session's next event
-makes it red again. One meaning per colour, so a glance down the panel is enough.
+makes it red again.
+
+A ready session also has a blue dot before work starts or resumes.
+Claude's start source distinguishes a new session, resume, clear, and completed compaction.
+These rows do not count toward the badge.

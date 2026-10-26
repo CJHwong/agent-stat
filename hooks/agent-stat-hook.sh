@@ -142,6 +142,7 @@ make_record() {
         term: (if $term == "" then null else $term end),
         tmux: (if $tmux == "" then null else $tmux end),
         event: (.hook_event_name // "unknown"),
+        source: (.source // null),
         agent_id: (.agent_id // null),
         session: (.session_id // ""),
         cwd: (.cwd // ""),

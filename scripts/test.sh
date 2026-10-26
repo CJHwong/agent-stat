@@ -64,6 +64,8 @@ swiftc -o "$BIN" \
     "$HERE/tests/transport.swift" \
     "$HERE/tests/titles.swift" \
     "$HERE/tests/review-regressions.swift" \
+    "$HERE/tests/start-sources.swift" \
+    "$HERE/src/PanelModel.swift" \
     "$HERE/src/CodexTitles.swift" \
     "$HERE/src/FileStamp.swift" \
     "$HERE/src/Record.swift" \

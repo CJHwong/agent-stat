@@ -8,7 +8,7 @@ that need you sort to the top.
 | State | Means |
 |---|---|
 | red | the session is waiting on you: a turn finished, or a permission prompt is open, and nothing is running under it |
-| blue | the same, after you clicked a red row: it still wants you and you have seen it |
+| blue | ready before work starts or resumes, or a waiting row you already clicked |
 | orange | the turn failed. It also needs you and counts in the badge |
 | purple | you interrupted it |
 | green | working, with the running tool and its elapsed time. The dot pulses |
@@ -26,6 +26,10 @@ is waiting on nobody, so it takes the same grey as a clean end and stays out of 
 
 | Row | Text |
 |---|---|
+| session starts | `ready` |
+| Claude session resumes | `resumed` |
+| Claude session clears | `cleared` |
+| Claude compaction completes | `context compacted` |
 | idle turn, nothing under it | its last message |
 | idle turn, 2 subagents running | `2 subagents, turn finished` |
 | tool in flight, 1 subagent | `Bash, 6s (1 subagent)` |
@@ -53,6 +57,12 @@ One JSON record per line, one file per host per day:
 An older build on another machine can write a smaller record.
 The reader skips a record that cannot decode and continues with the file.
 The file name carries the host, because only that machine writes it.
+
+The optional `source` field distinguishes Claude's `SessionStart` events.
+Ready sessions have solid blue dots and do not count toward the badge.
+A prompt or tool call returns the dot to green.
+Older records without `source` show `ready`.
+The hook does not report auto recap as a separate start source.
 
 Claude Code can send `session_title` in a hook payload.
 For Codex, the hook reads `thread_name` from the active profile's `session_index.jsonl`.

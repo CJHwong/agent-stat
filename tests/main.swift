@@ -1,7 +1,6 @@
 import Foundation
 
-// Unit tests for the model and the reader. No SwiftUI, no app, no real agents.
-// The real-run gate lives in tests/live-probe.py.
+// Tests for the model, presentation, and reader. The real-agent probe is tests/live-probe.py.
 
 var failures = 0
 var checks = 0
@@ -889,6 +888,7 @@ testRunEnd()
 testRemoteTransport()
 testCodexTitles()
 testReviewRegressions()
+MainActor.assumeIsolated { testStartSources() }
 
 print("")
 if failures == 0 {
