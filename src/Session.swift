@@ -64,6 +64,10 @@ struct Session {
     /// The terminal this session lives in. Set once, from the environment the
     /// agent inherited, and used to take you back to the right tab.
     var term: String?
+    /// The pty this session runs on, when the record carried one. It names the
+    /// Ghostty surface exactly, which a folder cannot. Empty means unknown, and
+    /// every record written before it was captured has no value.
+    var tty: String = ""
     var tmuxPane: String?
     /// nil means unknown. Local probes and remote status frames report liveness.
     var alive: Bool?
@@ -103,6 +107,7 @@ struct Session {
             if agentPid != pid {
                 agentStart = nil
                 launchCwd = ""
+                tty = ""
             }
             agentPid = pid
         }
@@ -118,6 +123,7 @@ struct Session {
         if let turn = record.turn { self.turn = turn }
         if let start = record.agentStart, !start.isEmpty { agentStart = start }
         if let term = record.term, !term.isEmpty { self.term = term }
+        if let tty = record.tty, !tty.isEmpty { self.tty = tty }
         if let pane = record.tmux, !pane.isEmpty { tmuxPane = pane }
         if let message = record.message, !message.isEmpty { lastMessage = message }
     }

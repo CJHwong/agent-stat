@@ -1,13 +1,19 @@
 import AppKit
 import Foundation
 
-/// A Ghostty tab, as far as we can see it. Ghostty exposes no pid and no tty, so
-/// the folder is the only handle that can tie a session to a tab.
+/// A Ghostty tab, as far as we can see it.
+///
+/// Since 1.4.0 the scripting dictionary reports the pty and the foreground pid of
+/// every surface. The tty is the exact handle: it names one surface, where a
+/// folder can name several tabs. It is empty when the running Ghostty does not
+/// report it, which is every build before 1.4.0.
 struct GhosttyTab: Identifiable, Equatable {
     let id: String
     let windowId: String
     let name: String
     let cwd: String
+    /// The surface pty, as `/dev/ttysNNN`. Empty when unknown.
+    let tty: String
 }
 
 /// What clicking a row will do.
@@ -37,6 +43,18 @@ enum JumpOutcome {
     var message: String? {
         if case .done(let message) = self { return message }
         return nil
+    }
+}
+
+/// Human name for a TERM_PROGRAM value.
+private func displayName(for term: String) -> String? {
+    switch term {
+    case "ghostty": return "Ghostty"
+    case "Apple_Terminal": return "Terminal"
+    case "iTerm.app": return "iTerm"
+    case "WezTerm": return "WezTerm"
+    case "vscode": return "Code"
+    default: return nil
     }
 }
 
@@ -79,6 +97,12 @@ enum Jumper {
     static func matchingTabs(for session: Session,
                              in all: [GhosttyTab]) -> (folder: String, tabs: [GhosttyTab]) {
         guard !all.isEmpty else { return ("", []) }
+        // A tty names exactly one surface, so it settles what the folder cannot:
+        // two sessions launched in one folder. Every step below is a fallback for
+        // a record written before the tty was captured, or for a Ghostty that
+        // does not report one, so an empty tty must never match an empty tty.
+        let exact = session.tty.isEmpty ? [] : all.filter { $0.tty == session.tty }
+        if exact.count == 1 { return (exact[0].cwd, exact) }
         let byFolder = folderCandidates(for: session, in: all)
         // A session that knows its own name matches on that first, because a tab title
         // is usually that name: Claude Code sets the tab title from the conversation.
@@ -116,18 +140,6 @@ enum Jumper {
             candidate = (candidate as NSString).deletingLastPathComponent
         }
         return ("", [])
-    }
-
-    /// Human name for a TERM_PROGRAM value.
-    private static func displayName(for term: String) -> String? {
-        switch term {
-        case "ghostty": return "Ghostty"
-        case "Apple_Terminal": return "Terminal"
-        case "iTerm.app": return "iTerm"
-        case "WezTerm": return "WezTerm"
-        case "vscode": return "Code"
-        default: return nil
-        }
     }
 
     // MARK: doing
@@ -312,7 +324,12 @@ enum Jumper {
                     set tname to (name of t)
                     set tid to (id of t)
                     repeat with term in terminals of t
-                        set out to out & wid & fs & tid & fs & tname & fs & (working directory of term) & linefeed
+                        set tt to ""
+                        try
+                            set tt to (tty of term) as text
+                        end try
+                        set out to out & wid & fs & tid & fs & tname & fs
+                        set out to out & (working directory of term) & fs & tt & linefeed
                     end repeat
                 end repeat
             end repeat
@@ -325,7 +342,8 @@ enum Jumper {
             let parts = line.components(separatedBy: fieldSeparator)
             guard parts.count >= 4 else { return nil }
             return GhosttyTab(id: parts[1], windowId: parts[0],
-                              name: parts[2], cwd: parts[3])
+                              name: parts[2], cwd: parts[3],
+                              tty: parts.count >= 5 ? parts[4] : "")
         }
     }
 

@@ -54,11 +54,44 @@ awk 'END { exit !(NR == 3) }' "$PROBE"/hosts/*.jsonl || {
 }
 echo "  hook: names its session, keeps a subagent start, drops a subagent tool call"
 rm -r "$PROBE"
+
+# The tty rides on the ps call that already reads agent_start, and it is the exact
+# handle a click uses to find its tab. A process with no terminal must record no
+# tty at all: "??" would travel into the record and match nothing, or worse, match
+# a tab whose read failed.
+PROBE="$(mktemp -d)"
+mkdir -p "$PROBE/hosts"
+printf '%s' '{"hook_event_name":"SessionStart","session_id":"t1","cwd":"/w"}' \
+    | AGENT_STAT_DIR="$PROBE" AGENT_HOOK_AGENT_PID=1 "$HOOK" claude
+grep -q '"tty":null' "$PROBE"/hosts/*.jsonl 2>/dev/null || {
+    echo "  FAIL: a process with no terminal recorded a tty"
+    cat "$PROBE"/hosts/*.jsonl
+    rm -r "$PROBE"
+    exit 1
+}
+# A machine with no terminal open cannot exercise the other half, so skip it there
+# rather than failing a test the environment cannot answer.
+WITH_TTY=$(ps -Ao pid=,tty= | awk '$2 != "??" && $2 != "" { print $1; exit }')
+if [ -n "$WITH_TTY" ]; then
+    printf '%s' '{"hook_event_name":"SessionStart","session_id":"t2","cwd":"/w"}' \
+        | AGENT_STAT_DIR="$PROBE" AGENT_HOOK_AGENT_PID="$WITH_TTY" "$HOOK" claude
+    grep -q '"tty":"/dev/ttys' "$PROBE"/hosts/*.jsonl 2>/dev/null || {
+        echo "  FAIL: a process with a terminal recorded no tty"
+        cat "$PROBE"/hosts/*.jsonl
+        rm -r "$PROBE"
+        exit 1
+    }
+    echo "  hook: records the tty of a session that has one, and none when it does not"
+else
+    echo "  hook: no terminal on this machine, checked the no-tty half only"
+fi
+rm -r "$PROBE"
 echo
 
 swiftc -o "$BIN" \
     "$HERE/tests/main.swift" \
     "$HERE/tests/watcher.swift" \
+    "$HERE/tests/matching.swift" \
     "$HERE/tests/icon.swift" \
     "$HERE/tests/failure.swift" \
     "$HERE/tests/transport.swift" \

@@ -24,9 +24,11 @@
 # Why there is no "host" field in the record:
 #   The file name carries the host. Only one machine ever writes a given file.
 #
-# Why there is no controlling tty in the record:
-#   Ghostty exposes no tty and no pid, so a tty would buy nothing and would cost
-#   a fork on every tool call.
+# Why the tty is read only on SessionStart:
+#   A process keeps its controlling terminal for its whole life, so one read is
+#   enough. Ghostty 1.4.0 and later report that tty per surface, which names the
+#   tab exactly. It rides on the ps call that already runs for agent_start, so it
+#   costs no extra fork.
 
 set -u
 
@@ -73,11 +75,22 @@ now=${stamp#* }
 # agent_start pins the pid to a process start time, so a recycled pid cannot look
 # like a live session. Only SessionStart pays for the ps call, which keeps the
 # per tool call path at one jq and one date.
+#
+# One ps call answers both. The start time is five fields and the tty is the last
+# one, so collapse the run of spaces between them and split on the final space. A
+# process with no terminal prints "??", which is recorded as no tty at all.
 start=null
+tty=
 case "$payload" in
     *'"SessionStart"'*)
-        start=$(ps -o lstart= -p "$agent_pid" 2>/dev/null | sed 's/^ *//;s/ *$//')
+        psline=$(ps -o lstart=,tty= -p "$agent_pid" 2>/dev/null | sed 's/  */ /g;s/^ //;s/ $//')
+        tty=${psline##* }
+        start=${psline% *}
         [ -n "$start" ] || start=null
+        case "$tty" in
+            ''|'??') tty= ;;
+            *) tty=/dev/$tty ;;
+        esac
         ;;
 esac
 
@@ -121,7 +134,8 @@ make_record() {
     --arg pid "$agent_pid" \
     --arg start "$start" \
     --arg term "${TERM_PROGRAM-}" \
-    --arg tmux "${TMUX_PANE-}" '
+    --arg tmux "${TMUX_PANE-}" \
+    --arg tty "$tty" '
     def codex_title($session):
         reduce ($names | split("\n")[] | fromjson?
                 | select(type == "object" and .id == $session)
@@ -141,6 +155,7 @@ make_record() {
         agent_start: (if $start == "null" then null else $start end),
         term: (if $term == "" then null else $term end),
         tmux: (if $tmux == "" then null else $tmux end),
+        tty: (if $tty == "" then null else $tty end),
         event: (.hook_event_name // "unknown"),
         source: (.source // null),
         agent_id: (.agent_id // null),

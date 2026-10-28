@@ -749,64 +749,6 @@ func testDismissSurvivesRestart() {
 
 }
 
-func testMatchingTabs() {
-    print("matching a row to its tab")
-    let tabs = [
-        GhosttyTab(id: "t1", windowId: "w1", name: "first", cwd: "/Users/you/work/api"),
-        GhosttyTab(id: "t2", windowId: "w1", name: "second", cwd: "/Users/you/work/api"),
-        GhosttyTab(id: "t3", windowId: "w1", name: "notes", cwd: "/Users/you/work/notes")
-    ]
-    var session = Session(key: SessionKey(host: HOST, id: "s"))
-    session.isLocal = true
-    session.launchCwd = "/Users/you/work/api"
-    checkEqual(Jumper.matchingTabs(for: session, in: tabs).tabs.count, 2,
-               "two tabs in that folder are both candidates, which is why a click asks")
-
-    session.launchCwd = "/Users/you/work/api/sub"
-    checkEqual(Jumper.matchingTabs(for: session, in: tabs).tabs.count, 2,
-               "a session in a subfolder falls back to the folder its tab sits in")
-
-    // A session that knows its own name matches on it, which is what separates two
-    // sessions sharing one folder, the case the folder alone cannot settle.
-    var named = session
-    named.title = "Builder Workshop"
-    let namedTabs = [
-        GhosttyTab(id: "t1", windowId: "w1", name: "\u{2733} Builder Workshop", cwd: "/Users/you/work/api"),
-        GhosttyTab(id: "t2", windowId: "w1", name: "image-gen", cwd: "/Users/you/work/api")
-    ]
-    checkEqual(Jumper.matchingTabs(for: named, in: namedTabs).tabs.map(\.id), ["t1"],
-               "the session name picks its own tab out of a folder two tabs share")
-
-    named.title = "no tab carries this"
-    checkEqual(Jumper.matchingTabs(for: named, in: namedTabs).tabs.count, 2,
-               "and a name no tab carries falls back to matching the folder")
-
-    // A word shared with a tab in another folder is not evidence. The session's own
-    // folder wins, or a click would land in a window that has nothing to do with it.
-    var titled = Session(key: SessionKey(host: HOST, id: "titled"))
-    titled.isLocal = true
-    titled.launchCwd = "/Users/you/work/backend"
-    titled.title = "api"
-    let mixedTabs = [
-        GhosttyTab(id: "x1", windowId: "w1", name: "api notes", cwd: "/Users/you/work/docs"),
-        GhosttyTab(id: "x2", windowId: "w1", name: "backend", cwd: "/Users/you/work/backend")
-    ]
-    checkEqual(Jumper.matchingTabs(for: titled, in: mixedTabs).tabs.map(\.id), ["x2"],
-               "a name found only in another folder does not move the click there")
-
-    // With no tab in its folder, the name is the only handle left: the tab may have
-    // changed directory after the session started.
-    titled.launchCwd = "/Users/you/work/moved"
-    checkEqual(Jumper.matchingTabs(for: titled, in: mixedTabs).tabs.map(\.id), ["x1"],
-               "with no tab in its folder, a name elsewhere is used")
-
-    session.launchCwd = "/Users/you/work/nowhere"
-    checkEqual(Jumper.matchingTabs(for: session, in: tabs).tabs.count, 0,
-               "a folder no tab sits in matches nothing")
-    checkEqual(Jumper.matchingTabs(for: session, in: []).tabs.count, 0,
-               "and with no tabs read at all, nothing matches")
-}
-
 func testGroupingByMachine() {
     print("grouping rows by machine")
     let now = 700_000
@@ -878,6 +820,8 @@ testAcknowledge()
 testLocalHostAgreesWithTheHook()
 testGroupingByMachine()
 testMatchingTabs()
+testMatchingTabsByTTY()
+testTTYDoesNotOverrideTmux()
 testDismiss()
 testDismissSurvivesRestart()
 testRoutes()

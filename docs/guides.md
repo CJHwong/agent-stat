@@ -9,18 +9,25 @@ Click a row and the panel takes you back to that session's terminal tab.
 | Case | What happens |
 |---|---|
 | tmux session | Jumps to the exact pane. The hook captures `TMUX_PANE`, so this is exact. |
-| one Ghostty tab in that folder | Selects that tab and raises the window. |
+| the session's tty is on a tab | Selects that tab and raises the window. |
+| the session's name is on one tab in its folder | Selects that tab. |
+| one Ghostty tab in that folder | Selects that tab. |
 | several tabs in that folder | Lists them by name and you pick. |
 | no tab in that folder | Raises Ghostty and says so. |
 | another machine, with a route | Selects the pane there over ssh, then brings the matching tab forward. |
 | another machine, no route | Says so, and moves nothing. |
 
-A row names the session, in parentheses after its folder, when the agent reports a name
-for it, on either machine. A click matches on that name inside the session's own folder
-first, which is what separates two sessions sharing a folder. With no name to go on, or no
-match inside that folder, it matches the folder and counts the tabs when several could be
-it. Rows from another machine name no tab, and neither does a session in tmux, which jumps
-to its pane instead.
+The tty is the exact handle. Ghostty 1.4.0 and later report the pty of every surface,
+and the hook records the one the agent runs on at session start. A tty names one surface,
+so two sessions launched in the same folder separate without the picker.
+
+Everything below the tty is a fallback. An older Ghostty reports no pty, and every record
+written before this was captured carries none, so a click falls back to the folder and
+counts the tabs when several could be it. A row names the session, in parentheses after
+its folder, when the agent reports a name for it, on either machine. A click matches on
+that name inside the session's own folder, which is what separated two sessions sharing a
+folder before the tty was available. Rows from another machine name no tab, and neither
+does a session in tmux, which jumps to its pane instead.
 
 The first click may raise a macOS prompt asking to let the panel control Ghostty. That
 is the automation permission, and the tab switch needs it.

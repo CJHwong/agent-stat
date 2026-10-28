@@ -22,9 +22,14 @@ if let index = arguments.firstIndex(of: "--login-item") {
 }
 if let index = arguments.firstIndex(of: "--plan-jump") {
     let folder = index + 1 < arguments.count ? arguments[index + 1] : ""
+    // An optional second argument is the pty the session runs on, which is what
+    // a real record now carries. Leave it out to see the folder-only plan every
+    // record written before the tty was captured produces.
+    let tty = index + 2 < arguments.count ? arguments[index + 2] : ""
     var session = Session(key: SessionKey(host: "local", id: "probe"))
     session.cwd = (folder as NSString).expandingTildeInPath
     session.term = "ghostty"
+    session.tty = tty.hasPrefix("/") ? tty : ""
     session.isLocal = true
     switch Jumper.plan(for: session) {
     case .tmux(let pane):

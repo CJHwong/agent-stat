@@ -14,6 +14,7 @@ changing the code. Keep that split.
 | `python3 tests/stream-lifecycle-probe.py` | Checks blocked input, forced helper shutdown, and slow replay against the real watchdog. |
 | `python3 tests/codex-title-probe.py` | Checks name capture and renames through real Codex hooks in an isolated profile. |
 | `python3 tests/startup-probe.py` | Checks actual app startup with an isolated remote cache and saved row memory. |
+| `python3 tests/tty-match-probe.py` | Compares folder matching against tty matching, on the live sessions and the running Ghostty. Run it after changing the matching rules. |
 | `python3 tests/performance-probe.py` | Measures history reads, idle polls, and repeated name reads in isolated files. Use `--binary <path>` to save a build, then `--compare <path>` to compare it with the current code. |
 | `python3 scripts/migrate-storage.py` | Checks existing storage and profiles without changes. Requires Python 3.11 or later. |
 | `python3 install.py` | Dry run of the hook install. |
@@ -22,7 +23,7 @@ changing the code. Keep that split.
 | `python3 tests/close-probe.py [claude\|codex]` | What a closed session reports, under a real pty. |
 | `python3 scripts/demo-events.py /tmp/demo` | A synthetic events tree covering every state, plus a second machine. |
 | `.build/AgentStat.app/Contents/MacOS/AgentStat --render out.png` | Draw the panel to a PNG. The system material does not draw offscreen, so it comes out opaque. |
-| `.build/AgentStat.app/Contents/MacOS/AgentStat --plan-jump <folder>` | Print what a click would do, without touching anything. |
+| `.build/AgentStat.app/Contents/MacOS/AgentStat --plan-jump <folder> [tty]` | Print what a click would do, without touching anything. Add the tty to see the exact match a new record produces. |
 
 ## Rules that are not style
 
