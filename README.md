@@ -1,18 +1,33 @@
 # agent-stat
 
-A macOS menu bar panel that shows what your Claude Code and Codex sessions are doing,
-across machines.
+A macOS menu bar panel and an optional tmux sidebar that show what your Claude Code
+and Codex sessions are doing. The panel supports sessions across machines.
 
 It reads their hook systems. Neither tool is modified and neither is wrapped: the hooks
 write, this app reads.
 
-## Get it running
+## Build and run the macOS app
 
-1. `bash build.sh`, then open `.build/AgentStat.app`. An icon appears in the menu bar.
-2. `python3 install.py` prints what it would change. `python3 install.py --apply` does it.
+Use macOS 14 or later with the Swift compiler from Xcode or its Command Line Tools.
+The shared hooks require `jq`. Use Python 3.11 or later for installation and tests.
+Run these commands from the repository root:
+
+```sh
+bash build.sh
+open .build/AgentStat.app
+```
+
+The build uses `swiftc` directly. It needs no Xcode project.
+The tmux component is optional and is not required to build or run the app.
+
+1. Run `python3 install.py` to inspect the shared hook installation.
+2. Run `python3 install.py --apply` to install the hooks on this machine.
 3. Codex reads its hooks at session start, so start a new Codex session. Claude Code
    re-reads its settings at once.
 4. Click the icon. Rows appear as your sessions report.
+
+For updates, quit the running app, rebuild it, and open the new bundle.
+See the [app build guide](docs/guides.md#build-or-update-the-macos-app) for signing and login-item details.
 
 The installer merges its entries into `~/.claude/settings.json` and
 `~/.codex/hooks.json`, leaves every other hook alone, backs up both files first, and
@@ -24,11 +39,21 @@ Run the installer on each machine. Add an `events` command to a remote route to 
 events over Secure Shell (SSH). Event delivery and script deployment require no Syncthing.
 See [the second machine guide](docs/guides.md#report-from-a-second-machine).
 
+## Terminal interface
+
+The optional [tmux component](tmux/README.md) uses the same saved events.
+It provides a persistent sidebar, colored status indicators, search, and conversation recovery.
+It works without the macOS panel running and adds no duplicate status hooks.
+
+After installing the shared hooks, run `python3 tmux/install.py` to inspect its plan.
+Run `python3 tmux/install.py --apply --reload` to install it on that host.
+
 ## Documentation
 
 | Document | What is in it |
 |---|---|
-| [docs/guides.md](docs/guides.md) | Go to a session, hide a row, reach a session on another machine, close a run an orchestrator finished, report from a second machine. |
+| [tmux/README.md](tmux/README.md) | Terminal installation, controls, status colors, recovery, and tests. |
+| [docs/guides.md](docs/guides.md) | Build or update the app, navigate sessions, configure login, and receive events from another machine. |
 | [docs/reference.md](docs/reference.md) | What each colour means, what a row says, the shape of the events file, where the files live, the messages a click can print, and the timing constants. |
 | [docs/how-it-works.md](docs/how-it-works.md) | Why one writer per file, why the hook cannot block an agent, why a remote click needs a route, and why the fold is deterministic. |
 

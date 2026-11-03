@@ -3,6 +3,18 @@
 Each of these is a decision that looks odd until you know what it stands on. Most of them
 were measured, not assumed.
 
+## Two interfaces share event collection
+
+The macOS panel and optional tmux sidebar read the events written by the same hooks.
+The terminal installer adds no agent hooks, and the sidebar needs no running macOS panel.
+The app build still compiles only `src/*.swift`.
+Its build command remains `bash build.sh`.
+
+The sidebar lives under `tmux/` and has its own deployment installer.
+It saves conversation recovery data separately from the shared event history.
+Sidebar unread markers and panel acknowledgements remain independent.
+See the [terminal guide](../tmux/README.md) for its supported host, controls, and recovery limits.
+
 ## One writer per file
 
 Each machine writes its own events under `~/.local/state/agent-stat/hosts`.

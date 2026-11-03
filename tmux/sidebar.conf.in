@@ -1,0 +1,33 @@
+set-option -g @window_sidebar_enabled 0
+set-option -g mouse on
+bind-key Tab run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' toggle '#{session_id}'"
+set-hook -g after-new-window[91] {
+    run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' ensure '#{session_id}'"
+}
+set-hook -g client-attached[91] {
+    run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' attach '#{session_id}'"
+}
+
+set-option -g pane-active-border-style fg=colour240,bg=default
+
+set-option -g status off
+set-hook -g client-resized[91] {
+    run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' ensure '#{session_id}'"
+}
+set-hook -g after-resize-window[91] {
+    run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' ensure '#{session_id}'"
+}
+
+bind-key -n MouseDown3Pane if-shell -F -t = '#{@window_sidebar}' { send-keys -M -t = } { run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' --pane '#{mouse_pane}' menu '#{session_id}'" }
+bind-key -n F1 run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' menu '#{session_id}'"
+set-hook -g after-select-window[91] {
+    run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' ensure '#{session_id}'"
+}
+
+set-hook -g after-select-window[92] {
+    if-shell -F '#{@window_sidebar_pane}' {
+        run-shell -b "tmux -S '#{socket_path}' send-keys -t '#{@window_sidebar_pane}' F24"
+    }
+}
+
+bind-key / run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' search '#{session_id}'"

@@ -1,5 +1,8 @@
 # Reference
 
+This reference describes the macOS panel and shared event storage.
+The [terminal reference](../tmux/README.md) covers tmux controls, status, and recovery.
+
 ## What a row shows
 
 Rows are grouped by the machine that wrote them, this machine first. Inside a group, rows
@@ -91,16 +94,25 @@ If the index is missing or unreadable, the hook still writes the event without a
 | `~/.config/agent-stat/routes.json` | Optional routes to other machines. |
 | `~/.config/agent-stat/memory.json` | The rows you have hidden and the rows you have clicked. A restart keeps both. |
 | `~/Library/Logs/agent-stat.log` | Startup lines, and why a click failed. |
+| `~/.agents/tmux/` | Deployed scripts for the optional terminal interface. |
+| `~/.config/tmux/window-sidebar.conf` | Generated terminal configuration and bindings. |
+| `~/.local/state/tmux-sidebar/` | Private terminal recovery state and installation backups. |
 
 ## Commands and environment
 
 | Name | What it does |
 |---|---|
 | `bash build.sh` | Builds `.build/AgentStat.app`. |
+| `open .build/AgentStat.app` | Opens the built macOS app. |
+| `python3 install.py --apply` | Installs shared hooks and the stream helper on this host. |
+| `python3 tmux/install.py` | Prints the terminal installation plan without writes. |
+| `python3 tmux/install.py --apply --reload` | Installs terminal scripts and reloads their bindings. |
+| `bash scripts/test.sh` | Checks the panel, shared helpers, and terminal component, then builds the app. |
 | `AGENT_STAT_DIR` | Point the app at another events directory. |
 | `AGENT_STAT_ROUTES` | Point the app at another routes file. |
 | `AGENT_STAT_MEMORY` | Point the app at another file for what you have dealt with. |
 | `AGENT_STAT_SHOW_PANEL=1` | Show the panel at launch, instead of waiting for a click. |
+| `TMUX_SIDEBAR_STATE_DIR` | Selects another recovery directory for the terminal interface. |
 
 Tests, probes and the other development aids are in [../CLAUDE.md](../CLAUDE.md).
 

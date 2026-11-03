@@ -122,6 +122,7 @@ swiftc -o "$BIN" \
 "$BIN"
 python3 -m unittest discover -s "$HERE/tests" -p 'test_*.py'
 python3 "$HERE/tests/stream-lifecycle-probe.py" --quick
+python3 "$HERE/tmux/tests/run.py"
 
 echo
 echo "building the app"

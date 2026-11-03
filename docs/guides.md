@@ -2,6 +2,37 @@
 
 Tasks, one at a time. Each one ends with what you should see.
 
+These guides describe the macOS panel and shared event collection.
+For the terminal interface, see the [tmux guide](../tmux/README.md).
+
+## Build or update the macOS app
+
+Use macOS 14 or later and the Swift compiler from Xcode or its Command Line Tools.
+The shared hooks require `jq`. Use Python 3.11 or later for installation and tests.
+The optional tmux component is not a build dependency.
+
+1. Open a terminal in the repository root.
+2. Run `bash build.sh`.
+3. If AgentStat is running, quit it from its menu bar icon.
+4. Run `open .build/AgentStat.app`.
+5. Check that its icon appears in the menu bar.
+
+The build compiles `src/*.swift` with `swiftc` and creates `.build/AgentStat.app`.
+It needs no Xcode project or separate package installation.
+It uses an available Apple Development signing identity, or attempts local signing.
+Set `CODESIGN_IDENTITY` to choose a signing identity.
+
+For first use, inspect `python3 install.py`, then run `python3 install.py --apply`.
+Run the installer again when shared hook scripts change.
+Restart Codex sessions after hook changes so they load the new configuration.
+Rebuilding the app does not install hooks or update the tmux component.
+
+Run `bash scripts/test.sh` to check both interfaces and build the app.
+Make sure `python3` selects Python 3.11 or later before this check.
+
+If you copy or move the app, enable Start at login from the copy you intend to use.
+See [Start it at login](#start-it-at-login).
+
 ## Go to a session
 
 Click a row and the panel takes you back to that session's terminal tab.
@@ -161,6 +192,9 @@ Each host also installs its own scripts there, including `bin/stream-events.py`.
 Synced settings can reference the same deployment path on each machine.
 Run the installer on each machine to create the programs at that path.
 Neither event delivery nor script deployment requires Syncthing.
+
+To use the sidebar on that host, also run `python3 tmux/install.py --apply --reload` there.
+The sidebar reads that host's local events and works without a local macOS panel.
 
 The receiver caches remote events under `~/.local/state/agent-stat/remote/<host>/hosts`.
 If the connection fails, the host shows offline and its cached history remains available.
