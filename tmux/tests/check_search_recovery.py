@@ -95,6 +95,8 @@ class CancelScreen:
 
 with (
     patch.object(views.curses, "curs_set"),
+    patch.object(views.curses, "mousemask"),
+    patch.object(views.curses, "mouseinterval"),
     patch.object(ui.agents, "replay_candidates", return_value=[]),
     patch.object(
         ui.agents,
@@ -117,6 +119,8 @@ class RestoreScreen(CancelScreen):
 
 with (
     patch.object(views.curses, "curs_set"),
+    patch.object(views.curses, "mousemask"),
+    patch.object(views.curses, "mouseinterval"),
     patch.object(ui.agents, "replay_candidates", return_value=[]),
     patch.object(
         ui.agents,
@@ -162,6 +166,8 @@ class CommandScreen(CancelScreen):
 
 with (
     patch.object(views.curses, "curs_set"),
+    patch.object(views.curses, "mousemask"),
+    patch.object(views.curses, "mouseinterval"),
     patch.object(
         ui.agents, "recovery_plan", return_value=(command_snapshot, set(), [])
     ),
@@ -176,3 +182,38 @@ with (
 print(
     "PASS: command selection starts unchecked and Space plus Restore submits only selected commands"
 )
+
+targets = {}
+views.recovery_lines(
+    ui, command_snapshot, set(), {"%saved"}, set(), "%saved", 100, targets
+)
+click_row = next(iter(targets)) + 2
+
+
+class MouseScreen(CancelScreen):
+    def __init__(self):
+        self.keys = iter([views.curses.KEY_MOUSE, views.curses.KEY_MOUSE])
+
+    def getch(self):
+        return next(self.keys)
+
+
+with (
+    patch.object(views.curses, "curs_set"),
+    patch.object(views.curses, "mousemask"),
+    patch.object(views.curses, "mouseinterval"),
+    patch.object(
+        ui.agents, "recovery_plan", return_value=(command_snapshot, set(), [])
+    ),
+    patch.object(ui.agents, "replay_candidates", return_value=[command_pane]),
+    patch.object(
+        ui, "mouse_event", side_effect=[(click_row, 5, "left"), (29, 5, "left")]
+    ),
+    patch.object(
+        ui.agents, "restore_snapshot", return_value="recovered-source"
+    ) as restore,
+    patch.object(ui, "change_sidebars"),
+):
+    views.render_recovery(MouseScreen(), ui, "socket", "source")
+    restore.assert_called_once_with("socket", "source", selected_commands={"%saved"})
+print("PASS: checkbox click selects a command and footer click starts its recovery")

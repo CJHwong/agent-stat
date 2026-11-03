@@ -46,9 +46,11 @@ Use `--python PATH` to select a stable Python interpreter.
 Search uses arrow keys and Enter. Escape closes it.
 Recovery uses arrows to scroll.
 Press `c` to select the next available saved command. Press Space to check or uncheck it.
+You can also click an available command checkbox.
 Commands start unchecked. The preview shows their saved arguments before you choose them.
-Press `r` to restore eligible conversations and checked commands.
+Press `r`, or click the Restore footer, to restore eligible conversations and checked commands.
 Escape closes the preview without starting recovery.
+If all saved programs still run, the preview explains that Restore is unavailable.
 
 The sidebar stays 28 columns wide.
 Below 100 terminal columns it becomes a narrow rail.

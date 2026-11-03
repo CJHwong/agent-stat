@@ -142,3 +142,27 @@ with (
 print(
     "PASS: unread marker, acknowledge, repeat completion, full preview, and F1 legend"
 )
+
+
+class FooterScreen(Screen):
+    def getmaxyx(self):
+        return 30, 28
+
+    def erase(self):
+        pass
+
+    def refresh(self):
+        pass
+
+
+screen = FooterScreen()
+with patch.object(sidebar.curses, "color_pair", return_value=0):
+    sidebar.draw_sidebar(screen, [entry], 0, False, False)
+assert any(call[0] == 26 and call[2] == "Recover" for call in screen.calls)
+assert any(call[0] == 27 and call[2] == "/ Search" for call in screen.calls)
+with patch.object(sidebar, "sidebar_action") as action:
+    sidebar.handle_click(
+        "socket", 0, [entry], {}, "%sidebar", False, 30, "source", 26, 20, "left"
+    )
+    assert action.call_args.args[2] == "recover"
+print("PASS: Recover and Search render and click on separate rows")

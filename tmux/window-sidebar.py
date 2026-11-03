@@ -468,12 +468,12 @@ def draw_help(screen, start, width):
 def draw_sidebar(screen, entries, selected, armed, overlay):
     height, width = screen.getmaxyx()
     screen.erase()
-    if height < 6 or width < 7:
+    if height < 7 or width < 7:
         screen.addnstr(1, 0, ">", max(1, width - 1), curses.A_BOLD)
         screen.refresh()
         return {}
     help_height = len(SHORTCUTS) + 2 if armed and height >= 20 else 0
-    limit = height - 4 - help_height
+    limit = height - 5 - help_height
     screen.addnstr(0, 1, "WINDOWS", width - 2, curses.A_BOLD)
     screen.addnstr(1, 1, "+ New  Split  Rename", width - 2, curses.A_DIM)
     offset = visible_entries(entries, selected, max(3, limit - 3))
@@ -491,8 +491,9 @@ def draw_sidebar(screen, entries, selected, armed, overlay):
         )
         line += entries[index].height
     if help_height:
-        draw_help(screen, height - 4 - help_height, width)
-    screen.addnstr(height - 3, 1, "Recover  / Search", width - 2, curses.A_DIM)
+        draw_help(screen, height - 5 - help_height, width)
+    screen.addnstr(height - 4, 1, "Recover", width - 2, curses.A_DIM)
+    screen.addnstr(height - 3, 1, "/ Search", width - 2, curses.A_DIM)
     screen.addnstr(height - 2, 1, "F1: Menu", width - 2, curses.A_DIM)
     hint = "Esc: Close overlay" if overlay else "Ctrl+B: Shortcuts"
     screen.addnstr(height - 1, 1, hint, width - 2, curses.A_DIM)
@@ -842,8 +843,10 @@ def handle_click(
     action = None
     if row == 1:
         action = "new" if column < 7 else "split" if column < 14 else "rename"
+    if row == height - 4:
+        action = "recover"
     if row == height - 3:
-        action = "recover" if column < 9 else "search"
+        action = "search"
     if row == height - 2:
         action = "menu"
     if action:

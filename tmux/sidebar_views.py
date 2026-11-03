@@ -98,7 +98,14 @@ def draw_search(screen, ui, results, query, selected):
 
 
 def recovery_lines(
-    ui, snapshot, active, candidates=None, selected=None, current=None, width=100
+    ui,
+    snapshot,
+    active,
+    candidates=None,
+    selected=None,
+    current=None,
+    width=100,
+    targets=None,
 ):
     candidates = set(candidates or ())
     selected = set(selected or ())
@@ -131,6 +138,8 @@ def recovery_lines(
                 if pane.get("pane_id") in candidates:
                     marker = "[x]" if pane["pane_id"] in selected else "[ ]"
                     pointer = ">" if pane["pane_id"] == current else " "
+                    if targets is not None:
+                        targets[len(lines)] = pane["pane_id"]
                     lines.append(f" {pointer} {marker} Rerun saved command")
                 else:
                     lines.append(
@@ -145,6 +154,8 @@ def render_recovery(screen, ui, socket_path, session):
     curses.curs_set(0)
     screen.keypad(True)
     screen.timeout(-1)
+    curses.mousemask(curses.ALL_MOUSE_EVENTS)
+    curses.mouseinterval(0)
     offset = 0
     error = ""
     selected_commands = set()
@@ -158,6 +169,7 @@ def render_recovery(screen, ui, socket_path, session):
             selected_commands.intersection_update(candidate_ids)
             current_command = min(current_command, max(0, len(candidate_ids) - 1))
             current = candidate_ids[current_command] if candidate_ids else None
+            targets = {}
             lines = recovery_lines(
                 ui,
                 snapshot,
@@ -166,9 +178,18 @@ def render_recovery(screen, ui, socket_path, session):
                 selected_commands,
                 current,
                 screen.getmaxyx()[1],
+                targets=targets,
             )
+            if not eligible and not candidates:
+                message = "No stopped conversations or saved commands are available."
+                lines = [
+                    message,
+                    "Running programs stay in their existing windows.",
+                    "",
+                ] + lines
+                targets = {row + 3: pane for row, pane in targets.items()}
         except RuntimeError as failure:
-            lines, eligible, candidate_ids = [str(failure)], [], []
+            lines, eligible, candidate_ids, targets = [str(failure)], [], [], {}
         height, width = screen.getmaxyx()
         capacity = max(1, height - 5)
         if follow_command:
@@ -188,18 +209,30 @@ def render_recovery(screen, ui, socket_path, session):
         hint = (
             f"r: Restore {len(eligible)} conversations, {len(selected_commands)} commands  Esc: Cancel"
             if count
-            else "No selected recovery actions  Esc: Close"
+            else "Restore unavailable  Esc: Close"
         )
         screen.addnstr(
             height - 2,
             1,
-            "c: Next command  Space: Toggle  Arrows: Scroll",
+            "Click checkbox or Space: Toggle  c: Next  Arrows: Scroll"
+            if candidate_ids
+            else "Arrows: Scroll  Esc: Close",
             max(1, width - 2),
             curses.A_DIM,
         )
         screen.addnstr(height - 1, 1, error or hint, max(1, width - 2), curses.A_BOLD)
         screen.refresh()
         key = screen.getch()
+        if key == curses.KEY_MOUSE:
+            event = ui.mouse_event()
+            if event and event[2] == "left":
+                row = event[0]
+                pane_id = targets.get(offset + row - 2)
+                if pane_id:
+                    selected_commands.symmetric_difference_update({pane_id})
+                    continue
+                if row == height - 1:
+                    key = ord("r")
         if key in (27, ord("q")):
             return
         if key == curses.KEY_DOWN:
@@ -216,6 +249,8 @@ def render_recovery(screen, ui, socket_path, session):
         elif key == ord(" ") and candidate_ids:
             pane_id = candidate_ids[current_command]
             selected_commands.symmetric_difference_update({pane_id})
+        elif key == ord("r") and not count:
+            error = "Nothing selected or available to restore. Esc closes this preview."
         elif key == ord("r") and count:
             try:
                 if selected_commands:
