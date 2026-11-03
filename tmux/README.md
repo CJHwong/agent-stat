@@ -44,13 +44,16 @@ Use `--python PATH` to select a stable Python interpreter.
 | Ctrl+B, then Tab | Show or hide the sidebar. |
 
 Search uses arrow keys and Enter. Escape closes it.
-Recovery uses arrows to scroll.
+Recovery supports the mouse wheel, arrows, Page Up, and Page Down.
+The line counter shows your position in the preview.
 Press `c` to select the next available saved command. Press Space to check or uncheck it.
 You can also click an available command checkbox.
 Commands start unchecked. The preview shows their saved arguments before you choose them.
 Press `r`, or click the Restore footer, to restore eligible conversations and checked commands.
 Escape closes the preview without starting recovery.
 If all saved programs still run, the preview explains that Restore is unavailable.
+The preview loads running-process information once, so scrolling does not repeat expensive scans.
+Restore checks that information again before it starts programs.
 
 The sidebar stays 28 columns wide.
 Below 100 terminal columns it becomes a narrow rail.

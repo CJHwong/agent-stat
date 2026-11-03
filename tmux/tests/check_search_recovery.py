@@ -75,7 +75,7 @@ class CancelScreen:
         pass
 
     def timeout(self, milliseconds):
-        pass
+        self.wait = milliseconds
 
     def getmaxyx(self):
         return 30, 100
@@ -90,7 +90,7 @@ class CancelScreen:
         pass
 
     def getch(self):
-        return 27
+        return -1 if getattr(self, "wait", -1) == 25 else 27
 
 
 with (
@@ -161,7 +161,7 @@ class CommandScreen(CancelScreen):
         self.keys = iter([ord(" "), ord("r")])
 
     def getch(self):
-        return next(self.keys)
+        return -1 if getattr(self, "wait", -1) == 25 else next(self.keys)
 
 
 with (
@@ -195,7 +195,7 @@ class MouseScreen(CancelScreen):
         self.keys = iter([views.curses.KEY_MOUSE, views.curses.KEY_MOUSE])
 
     def getch(self):
-        return next(self.keys)
+        return -1 if getattr(self, "wait", -1) == 25 else next(self.keys)
 
 
 with (
@@ -207,7 +207,7 @@ with (
     ),
     patch.object(ui.agents, "replay_candidates", return_value=[command_pane]),
     patch.object(
-        ui, "mouse_event", side_effect=[(click_row, 5, "left"), (29, 5, "left")]
+        views, "recovery_mouse", side_effect=[(click_row, 5, "left"), (29, 5, "left")]
     ),
     patch.object(
         ui.agents, "restore_snapshot", return_value="recovered-source"
@@ -217,3 +217,78 @@ with (
     views.render_recovery(MouseScreen(), ui, "socket", "source")
     restore.assert_called_once_with("socket", "source", selected_commands={"%saved"})
 print("PASS: checkbox click selects a command and footer click starts its recovery")
+
+
+class ScrollScreen(CancelScreen):
+    def __init__(self):
+        self.keys = iter([views.curses.KEY_MOUSE] * 100 + [27])
+
+    def getch(self):
+        return -1 if getattr(self, "wait", -1) == 25 else next(self.keys)
+
+
+with (
+    patch.object(views.curses, "curs_set"),
+    patch.object(views.curses, "mousemask"),
+    patch.object(views.curses, "mouseinterval"),
+    patch.object(
+        ui.agents, "recovery_plan", return_value=(snapshot, {"live-id"}, [])
+    ) as plan,
+    patch.object(ui.agents, "replay_candidates", return_value=[]) as candidates,
+    patch.object(
+        views,
+        "recovery_mouse",
+        side_effect=[(5, 10, "down")] * 50 + [(5, 10, "up")] * 50,
+    ),
+):
+    views.render_recovery(ScrollScreen(), ui, "socket", "source")
+    plan.assert_called_once()
+    candidates.assert_called_once()
+with patch.object(
+    views.curses, "getmouse", return_value=(0, 5, 10, 0, views.curses.BUTTON4_PRESSED)
+):
+    assert views.recovery_mouse()[2] == "up"
+if getattr(views.curses, "BUTTON5_PRESSED", 0):
+    with patch.object(
+        views.curses,
+        "getmouse",
+        return_value=(0, 5, 10, 0, views.curses.BUTTON5_PRESSED),
+    ):
+        assert views.recovery_mouse()[2] == "down"
+print("PASS: wheel input scrolls and 100 queued events do not repeat process scans")
+
+assert views.decode_recovery_sequence(b"[M" + bytes([97, 42, 42])) == (
+    views.curses.KEY_MOUSE,
+    (9, 9, "down"),
+)
+assert views.decode_recovery_sequence(b"[M" + bytes([96, 42, 42])) == (
+    views.curses.KEY_MOUSE,
+    (9, 9, "up"),
+)
+assert views.decode_recovery_sequence(b"[<65;10;10M") == (
+    views.curses.KEY_MOUSE,
+    (9, 9, "down"),
+)
+assert views.decode_recovery_sequence(b"[<0;10;10m")[1] is None
+assert views.decode_recovery_sequence(b"OB")[0] == views.curses.KEY_DOWN
+print("PASS: native and SGR wheel protocols, releases, and application-mode arrows")
+
+
+class ByteScreen(CancelScreen):
+    def __init__(self, values):
+        self.values = iter(values)
+
+    def getch(self):
+        return next(self.values, -1)
+
+
+assert views.recovery_key(ByteScreen(b"\x1b[M" + bytes([97, 42, 42]))) == (
+    views.curses.KEY_MOUSE,
+    (9, 9, "down"),
+)
+assert views.recovery_key(ByteScreen(b"\x1b[<64;10;10M")) == (
+    views.curses.KEY_MOUSE,
+    (9, 9, "up"),
+)
+assert views.recovery_key(ByteScreen([27])) == (27, None)
+print("PASS: raw wheel byte streams complete without an extra delay")

@@ -149,10 +149,80 @@ def recovery_lines(
     return lines
 
 
+def recovery_mouse():
+    try:
+        _, column, row, _, buttons = curses.getmouse()
+    except curses.error:
+        return None
+    if buttons & curses.BUTTON4_PRESSED:
+        return row, column, "up"
+    if buttons & getattr(curses, "BUTTON5_PRESSED", 0):
+        return row, column, "down"
+    if buttons & (curses.BUTTON1_RELEASED | curses.BUTTON1_CLICKED):
+        return row, column, "left"
+    return None
+
+
+def decode_recovery_sequence(sequence):
+    keys = {
+        b"[A": curses.KEY_UP,
+        b"OA": curses.KEY_UP,
+        b"[B": curses.KEY_DOWN,
+        b"OB": curses.KEY_DOWN,
+        b"[5~": curses.KEY_PPAGE,
+        b"[6~": curses.KEY_NPAGE,
+    }
+    if sequence in keys:
+        return keys[sequence], None
+    if sequence.startswith(b"[M") and len(sequence) == 5:
+        button, column, row = (value - 32 for value in sequence[2:])
+        released = button & 3 == 3
+    elif sequence.startswith(b"[<") and sequence[-1:] in (b"M", b"m"):
+        try:
+            button, column, row = map(int, sequence[2:-1].split(b";"))
+        except ValueError:
+            return -1, None
+        released = sequence.endswith(b"m")
+    else:
+        return -1, None
+    action = {64: "up", 65: "down", 0: "left"}.get(button)
+    event = (row - 1, column - 1, action) if action and not released else None
+    return curses.KEY_MOUSE, event
+
+
+def recovery_key(screen):
+    key = screen.getch()
+    if key != 27:
+        return key, None
+    screen.timeout(25)
+    sequence = bytearray()
+    try:
+        for _ in range(64):
+            character = screen.getch()
+            if character == -1:
+                return (27, None) if not sequence else (-1, None)
+            if not 0 <= character <= 255:
+                return -1, None
+            sequence.append(character)
+            raw = bytes(sequence)
+            if raw.startswith(b"[M"):
+                if len(raw) < 5:
+                    continue
+                return decode_recovery_sequence(raw)
+            if len(raw) >= 2 and (
+                65 <= character <= 90 or 97 <= character <= 122 or character == 126
+            ):
+                return decode_recovery_sequence(raw)
+    finally:
+        screen.timeout(-1)
+    return -1, None
+
+
 def render_recovery(screen, ui, socket_path, session):
     curses.set_escdelay(25)
     curses.curs_set(0)
-    screen.keypad(True)
+    # Decode mouse bytes here because the system curses drops wheel-down events.
+    screen.keypad(False)
     screen.timeout(-1)
     curses.mousemask(curses.ALL_MOUSE_EVENTS)
     curses.mouseinterval(0)
@@ -161,10 +231,15 @@ def render_recovery(screen, ui, socket_path, session):
     selected_commands = set()
     current_command = 0
     follow_command = True
+    try:
+        snapshot, active, eligible = ui.agents.recovery_plan(socket_path, session)
+        candidates = ui.agents.replay_candidates(socket_path, snapshot)
+        load_error = ""
+    except RuntimeError as failure:
+        snapshot, active, eligible, candidates = None, set(), [], []
+        load_error = str(failure)
     while True:
-        try:
-            snapshot, active, eligible = ui.agents.recovery_plan(socket_path, session)
-            candidates = ui.agents.replay_candidates(socket_path, snapshot)
+        if snapshot is not None:
             candidate_ids = [pane["pane_id"] for pane in candidates]
             selected_commands.intersection_update(candidate_ids)
             current_command = min(current_command, max(0, len(candidate_ids) - 1))
@@ -188,8 +263,8 @@ def render_recovery(screen, ui, socket_path, session):
                     "",
                 ] + lines
                 targets = {row + 3: pane for row, pane in targets.items()}
-        except RuntimeError as failure:
-            lines, eligible, candidate_ids, targets = [str(failure)], [], [], {}
+        else:
+            lines, candidate_ids, targets = [load_error], [], {}
         height, width = screen.getmaxyx()
         capacity = max(1, height - 5)
         if follow_command:
@@ -203,28 +278,45 @@ def render_recovery(screen, ui, socket_path, session):
         offset = min(offset, max(0, len(lines) - capacity))
         screen.erase()
         screen.addnstr(0, 1, "RECOVERY PREVIEW", max(1, width - 2), curses.A_BOLD)
+        screen.addnstr(
+            1,
+            1,
+            f"{offset + 1}-{min(offset + capacity, len(lines))} of {len(lines)} lines",
+            max(1, width - 2),
+            curses.A_DIM,
+        )
         for row, line in enumerate(lines[offset : offset + capacity], 2):
             screen.addnstr(row, 1, line, max(1, width - 2))
         count = len(eligible) + len(selected_commands)
         hint = (
             f"r: Restore {len(eligible)} conversations, {len(selected_commands)} commands  Esc: Cancel"
             if count
-            else "Restore unavailable  Esc: Close"
+            else (
+                "Choose a command to restore  Esc: Close"
+                if candidate_ids
+                else "Nothing to restore (already running)  Esc: Close"
+            )
         )
         screen.addnstr(
             height - 2,
             1,
             "Click checkbox or Space: Toggle  c: Next  Arrows: Scroll"
             if candidate_ids
-            else "Arrows: Scroll  Esc: Close",
+            else "Wheel/Arrows: Scroll  Esc: Close",
             max(1, width - 2),
             curses.A_DIM,
         )
         screen.addnstr(height - 1, 1, error or hint, max(1, width - 2), curses.A_BOLD)
         screen.refresh()
-        key = screen.getch()
+        key, event = recovery_key(screen)
         if key == curses.KEY_MOUSE:
-            event = ui.mouse_event()
+            event = event or recovery_mouse()
+            if event and event[2] == "up":
+                offset = max(0, offset - 3)
+                continue
+            if event and event[2] == "down":
+                offset += 3
+                continue
             if event and event[2] == "left":
                 row = event[0]
                 pane_id = targets.get(offset + row - 2)
