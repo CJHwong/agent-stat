@@ -43,7 +43,7 @@ if let index = arguments.firstIndex(of: "--plan-jump") {
         print("plan: raise \(name)")
     case .remote(let host):
         print("plan: refuse, that session is on \(host)")
-    case .route(let host, let route, let pane, _):
+    case .route(let host, let route, let pane, _, _):
         print("plan: on \(host) via \(route.argv.joined(separator: " ")), pane \(pane ?? "-")")
     }
     exit(0)

@@ -22,6 +22,29 @@ enum TmuxTargeting {
         "-F#{pane_id},#{window_id},#{session_attached},#{pane_current_path}"
     ]
 
+    // Keep titles separate because titles and paths can both contain commas.
+    static let titleListing = ["list-panes", "-a", "-F#{pane_id},#{pane_title}"]
+
+    static func matchingPanes(title: String, in listing: String) -> [String] {
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !name.isEmpty else { return [] }
+        let decoration = CharacterSet.symbols.union(.whitespacesAndNewlines).union(.nonBaseCharacters)
+        let matches = listing.split(separator: "\n").compactMap { line -> String? in
+            let fields = line.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: false)
+            guard fields.count == 2 else { return nil }
+            let paneTitle = fields[1].lowercased()
+            guard let match = paneTitle.range(of: name) else { return nil }
+            // Codex adds a changing spinner before the session title.
+            let prefix = String(paneTitle[..<match.lowerBound])
+            guard prefix.trimmingCharacters(in: decoration).isEmpty else { return nil }
+            let suffix = paneTitle[match.upperBound...]
+            guard suffix.isEmpty || suffix.hasPrefix(" | ") else { return nil }
+            return String(fields[0])
+        }
+        // Linked windows can list the same pane through several sessions.
+        return Array(Set(matches)).sorted()
+    }
+
     /// The two subcommands that move a client to a pane.
     ///
     /// Both halves are needed: selecting a window does not move the pane inside

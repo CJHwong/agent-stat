@@ -140,6 +140,8 @@ It waits for a complete line before it adds a record to the cache.
 | selected on this machine | nothing, the tab is on screen |
 | no route for that host | `that session is on <host>, not on this machine` |
 | that session reports no pane | `that session reports no tmux pane on <host>` |
+| no pane matches the session title | `no pane matches <title> on <host>` |
+| several panes match the session title | `multiple panes match <title> on <host>` |
 | cannot run tmux there | `cannot reach tmux on <host>` |
 | the pane is gone | `pane <pane> is gone on <host>` |
 | no tab matched | `selected on <host>, no tab named <name> here` |

@@ -113,6 +113,13 @@ It lives outside synced folders because its tab names belong to this machine.
 An optional `events` command receives remote status independently of navigation.
 See the second machine guide below.
 
+If a remote session reports no pane identifier, the panel uses its session title.
+It accepts an exact pane title or a title with a ` | <suffix>` ending.
+It ignores status symbols before the title, such as the Codex spinner.
+The match ignores case and must identify one pane.
+Duplicate titles stop the jump.
+The pane must have an attached client and a matching folder.
+
 Two things measured on a real second machine, both of which the example above handles: a
 non-interactive ssh has no `tmux` on its `PATH`, so the absolute path is required; and a
 select from a shell with no `TMUX` moves the client attached to that machine, so the pane

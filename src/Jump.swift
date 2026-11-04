@@ -29,7 +29,7 @@ enum JumpPlan {
     case remote(host: String)
     /// The session is on another machine and a route reaches it. `pane` is nil
     /// for a session there that reports no tmux pane.
-    case route(host: String, route: Route, pane: String?, folder: String)
+    case route(host: String, route: Route, pane: String?, folder: String, title: String? = nil)
 }
 
 /// What a click did, or what it needs from you.
@@ -71,7 +71,7 @@ enum Jumper {
         if let host = session.onAnotherMachine {
             guard let route = routes.route(for: host) else { return .remote(host: host) }
             let folder = session.launchCwd.isEmpty ? session.cwd : session.launchCwd
-            return .route(host: host, route: route, pane: session.tmuxPane, folder: folder)
+            return .route(host: host, route: route, pane: session.tmuxPane, folder: folder, title: session.title)
         }
         if let pane = session.tmuxPane, !pane.isEmpty {
             return .tmux(pane: pane)
@@ -165,66 +165,9 @@ enum Jumper {
             return .done(message: "no tab found in that folder, raised \(name)")
         case .remote(let host):
             return .done(message: "that session is on \(host), not on this machine")
-        case .route(let host, let route, let pane, let folder):
-            return performRoute(host: host, route: route, pane: pane, folder: folder)
+        case .route(let host, let route, let pane, let folder, let title):
+            return performRoute(host: host, route: route, pane: pane, folder: folder, title: title)
         }
-    }
-
-    /// Select the pane on the other machine, then come back here for the tab.
-    ///
-    /// The other machine's half is the network call, and this machine's half is
-    /// the tab title match. A session there with no pane reported has nothing to
-    /// select, so the click only brings a tab forward.
-    private static func performRoute(host: String, route: Route, pane: String?,
-                                     folder: String) -> JumpOutcome {
-        let message = pane.flatMap {
-            performRemote(host: host, route: route, pane: $0, folder: folder)
-        }
-        let tabs = tabs(for: route)
-        switch tabs.count {
-        case 1:
-            let outcome = performGhostty(tab: tabs[0])
-            return .done(message: outcome.message ?? message)
-        case 2...:
-            // A failed selection matters more than the tab question.
-            if let message { return .done(message: message) }
-            return .pick(folder: route.tab ?? host, tabs: tabs)
-        default:
-            if let name = route.tab, !name.isEmpty {
-                return .done(message: message ?? "selected on \(host), no tab named \(name) here")
-            }
-            return .done(message: message ?? "selected the pane on \(host)")
-        }
-    }
-
-    /// Select a pane on another machine, by running tmux there through the route.
-    ///
-    /// Returns a message when the click should say something, or nil when the
-    /// pane was selected. A route that cannot be reached says so rather than
-    /// pretending: a click that silently did nothing is worse than one that
-    /// reports a failure.
-    private static func performRemote(host: String, route: Route, pane: String,
-                                      folder: String) -> String? {
-        let listing = runTmux(route.argv, TmuxTargeting.listing)
-        guard listing.status == 0 else {
-            return "cannot reach tmux on \(host)"
-        }
-        guard let info = TmuxTargeting.paneInfo(pane, in: listing.output) else {
-            return "pane \(pane) is gone on \(host)"
-        }
-        guard info.attached else {
-            return "pane \(pane) has no tmux client on \(host)"
-        }
-        guard TmuxTargeting.folderMatches(folder, info.path) else {
-            return "pane \(pane) is at a different folder on \(host)"
-        }
-        let commands = TmuxTargeting.selects(window: info.window, pane: pane)
-        let selected = runTmux(route.argv, commands[0])
-        _ = runTmux(route.argv, commands[1])
-        guard selected.status == 0 else {
-            return "could not select \(info.window) on \(host)"
-        }
-        return nil
     }
 
     /// Tabs on this machine whose title names the route's machine.
@@ -250,7 +193,7 @@ enum Jumper {
     }
 
     /// Run one tmux subcommand through a route's argv.
-    private static func runTmux(_ argv: [String], _ subcommand: [String]) -> Result {
+    static func runTmux(_ argv: [String], _ subcommand: [String]) -> Result {
         let start = executable(argv)
         return run(start.path, start.arguments + subcommand)
     }
@@ -295,7 +238,7 @@ enum Jumper {
         return .done(message: nil)
     }
 
-    private static func performGhostty(tab: GhosttyTab) -> JumpOutcome {
+    static func performGhostty(tab: GhosttyTab) -> JumpOutcome {
         let script = """
         tell application "Ghostty"
             set targetWindow to (first window whose id is "\(tab.windowId)")
@@ -356,7 +299,7 @@ enum Jumper {
         app.activate()
     }
 
-    private struct Result {
+    struct Result {
         let status: Int32
         let output: String
     }

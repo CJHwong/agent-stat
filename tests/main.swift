@@ -634,7 +634,7 @@ func testRoutePlanning() {
     // A remote session with a route plans to select there; without one it is
     // refused, which is still the default.
     let routed = Jumper.plan(for: routedSession, routes: routes)
-    guard case .route(let host, _, let pane, _) = routed else {
+    guard case .route(let host, _, let pane, _, _) = routed else {
         check(false, "a routed remote session plans a route")
         return
     }
@@ -677,6 +677,7 @@ func testRouteShellSafety() {
     print("what a route sends survives a shell")
     let shellBreakers = " \t\n;|&$`\"'<>()*?[]!"
     var sent = TmuxTargeting.listing
+    sent += TmuxTargeting.titleListing
     sent += TmuxTargeting.selects(window: "@3", pane: "%12").flatMap { $0 }
     for argument in sent {
         check(!argument.isEmpty, "no empty argument: \(sent)")
@@ -822,6 +823,10 @@ testGroupingByMachine()
 testMatchingTabs()
 testMatchingTabsByTTY()
 testTTYDoesNotOverrideTmux()
+testRemotePaneTitleFallback()
+testRemotePaneTitleRefusals()
+testRemotePaneSelectionErrors()
+testRemotePaneTitleParsing()
 testDismiss()
 testDismissSurvivesRestart()
 testRoutes()

@@ -115,11 +115,13 @@ swiftc -o "$BIN" \
     "$HERE/src/LoginItem.swift" \
     "$HERE/src/PanelMemory.swift" \
     "$HERE/src/Jump.swift" \
+    "$HERE/src/JumpRemote.swift" \
     "$HERE/src/TmuxTargeting.swift" \
     "$HERE/src/Paths.swift" \
     "$HERE/src/RemoteCache.swift"
 
 "$BIN"
+python3 "$HERE/tests/tmux-jump-probe.py"
 python3 -m unittest discover -s "$HERE/tests" -p 'test_*.py'
 python3 "$HERE/tests/stream-lifecycle-probe.py" --quick
 if command -v cargo >/dev/null 2>&1; then

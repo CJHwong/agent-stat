@@ -94,9 +94,9 @@ extension JumpPlan {
             return "raise app=\(name)"
         case .remote(let host):
             return "no route host=\(host)"
-        case .route(let host, let route, let pane, let folder):
+        case .route(let host, let route, let pane, let folder, let title):
             return "route host=\(host) pane=\(pane ?? "-") folder=\(folder) "
-                + "tab=\(route.tab ?? "-")"
+                + "tab=\(route.tab ?? "-") title=\(title ?? "-")"
         }
     }
 }
