@@ -65,6 +65,18 @@ repos:
         entry: shellcheck -x
         language: system
         types: [shell]
+      - id: rustfmt
+        name: rustfmt
+        entry: cargo fmt --manifest-path tmux/Cargo.toml --check
+        language: system
+        files: ^tmux/.*\.rs$
+        pass_filenames: false
+      - id: clippy
+        name: clippy
+        entry: cargo clippy --locked --manifest-path tmux/Cargo.toml --all-targets -- -D warnings
+        language: system
+        files: ^tmux/(.*\.rs|Cargo\.(toml|lock))$
+        pass_filenames: false
       - id: hook-guards
         name: hook scripts parse, with no apostrophe in a comment
         entry: scripts/guard-hooks.sh

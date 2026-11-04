@@ -193,7 +193,8 @@ Synced settings can reference the same deployment path on each machine.
 Run the installer on each machine to create the programs at that path.
 Neither event delivery nor script deployment requires Syncthing.
 
-To use the sidebar on that host, also run `python3 tmux/install.py --apply --reload` there.
+To use the sidebar, deploy its Rust binary and run `agent-stat-tmux install --apply --reload --restart` on that host.
+See the [terminal guide](../tmux/README.md) for its build and deployment commands.
 The sidebar reads that host's local events and works without a local macOS panel.
 
 The receiver caches remote events under `~/.local/state/agent-stat/remote/<host>/hosts`.

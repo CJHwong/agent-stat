@@ -94,7 +94,7 @@ If the index is missing or unreadable, the hook still writes the event without a
 | `~/.config/agent-stat/routes.json` | Optional routes to other machines. |
 | `~/.config/agent-stat/memory.json` | The rows you have hidden and the rows you have clicked. A restart keeps both. |
 | `~/Library/Logs/agent-stat.log` | Startup lines, and why a click failed. |
-| `~/.agents/tmux/` | Deployed scripts for the optional terminal interface. |
+| `~/.agents/tmux/agent-stat-tmux` | The native terminal executable and installer. |
 | `~/.config/tmux/window-sidebar.conf` | Generated terminal configuration and bindings. |
 | `~/.local/state/tmux-sidebar/` | Private terminal recovery state and installation backups. |
 
@@ -105,8 +105,8 @@ If the index is missing or unreadable, the hook still writes the event without a
 | `bash build.sh` | Builds `.build/AgentStat.app`. |
 | `open .build/AgentStat.app` | Opens the built macOS app. |
 | `python3 install.py --apply` | Installs shared hooks and the stream helper on this host. |
-| `python3 tmux/install.py` | Prints the terminal installation plan without writes. |
-| `python3 tmux/install.py --apply --reload` | Installs terminal scripts and reloads their bindings. |
+| `tmux/target/release/agent-stat-tmux install` | Prints the terminal installation plan without writes. |
+| `tmux/target/release/agent-stat-tmux install --apply --reload --restart` | Installs the native terminal and replaces sidebar processes. |
 | `bash scripts/test.sh` | Checks the panel, shared helpers, and terminal component, then builds the app. |
 | `AGENT_STAT_DIR` | Point the app at another events directory. |
 | `AGENT_STAT_ROUTES` | Point the app at another routes file. |

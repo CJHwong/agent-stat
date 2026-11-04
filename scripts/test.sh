@@ -122,7 +122,16 @@ swiftc -o "$BIN" \
 "$BIN"
 python3 -m unittest discover -s "$HERE/tests" -p 'test_*.py'
 python3 "$HERE/tests/stream-lifecycle-probe.py" --quick
-python3 "$HERE/tmux/tests/run.py"
+if command -v cargo >/dev/null 2>&1; then
+    cargo test --locked --manifest-path "$HERE/tmux/Cargo.toml" --bin agent-stat-tmux --quiet
+    if command -v tmux >/dev/null 2>&1; then
+        cargo test --locked --manifest-path "$HERE/tmux/Cargo.toml" --test native --quiet -- --test-threads=2
+    else
+        echo "SKIP: terminal integration checks require tmux"
+    fi
+else
+    echo "SKIP: optional terminal checks require Cargo"
+fi
 
 echo
 echo "building the app"

@@ -10,7 +10,9 @@ The terminal installer adds no agent hooks, and the sidebar needs no running mac
 The app build still compiles only `src/*.swift`.
 Its build command remains `bash build.sh`.
 
-The sidebar lives under `tmux/` and has its own deployment installer.
+The sidebar lives under `tmux/` and has one Rust executable with a built-in installer.
+Menus, overlays, recovery, snapshots, and shortcut detection run in Rust.
+The terminal reads the shared events without a Python helper.
 It saves conversation recovery data separately from the shared event history.
 Sidebar unread markers and panel acknowledgements remain independent.
 See the [terminal guide](../tmux/README.md) for its supported host, controls, and recovery limits.

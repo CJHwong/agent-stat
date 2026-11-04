@@ -8,9 +8,11 @@ changing the code. Keep that split.
 | Command | What it does |
 |---|---|
 | `bash scripts/test.sh` | The unit tests, then the app build. Run it before you claim anything. |
-| `python3 tmux/tests/run.py` | Terminal checks, including recovery on an isolated tmux server. |
-| `python3 tmux/install.py` | Preview terminal deployment without writes. |
-| `python3 tmux/install.py --apply --reload` | Deploy terminal scripts and reload their tmux bindings. |
+| `cargo test --locked --manifest-path tmux/Cargo.toml -- --test-threads=2` | Native terminal checks, including recovery and real pseudo terminal input. Requires tmux. |
+| `cargo clippy --locked --manifest-path tmux/Cargo.toml --all-targets -- -D warnings` | Native terminal lint checks. |
+| `cargo build --release --locked --manifest-path tmux/Cargo.toml` | Build the terminal executable. The Swift app does not require Cargo. |
+| `tmux/target/release/agent-stat-tmux install` | Preview terminal deployment without writes. |
+| `tmux/target/release/agent-stat-tmux install --apply --reload --restart` | Deploy the native terminal and replace sidebar processes. |
 | `python3 -m unittest discover -s tests -p 'test_stream_events.py'` | Tests the stream helper with isolated event files. |
 | `python3 tests/stream-probe.py` | Tests the actual Swift connection with a separate local writer. |
 | `python3 tests/stream-probe.py --ssh <peer>` | Runs the same checks with isolated source files on a second machine. |
@@ -75,8 +77,8 @@ with `prek run --all-files`, and never bypass it.
 | The pre-push stage | `scripts/test.sh`, so a push carries passing tests and a building app. |
 
 `scripts/test.sh` also runs the stream and migration tests. Python 3.11 or later is required for migration tests.
-It runs `tmux/tests/run.py` before the app build.
-The terminal recovery test uses an isolated server and skips when tmux is unavailable.
+It runs native terminal tests when Cargo is available.
+The terminal integration tests use isolated servers and skip when tmux is unavailable.
 It also checks blocked helper input and forced shutdown. The full lifecycle probe additionally checks the real watchdog delay.
 Use isolated event folders
 and separate writer processes for a real stream probe before migrating live storage.
@@ -119,3 +121,7 @@ from the navigation command. Remote caches live under
 Before moving live files, validate the stream in isolated folders on both machines.
 Retain old history. Keep a compatibility launcher for active sessions that retain
 the old hook command. Update every profile and orchestrator end bridge caller.
+
+The terminal migration retains empty compatibility hook endpoints only for recorded live callers.
+The Rust monitor removes those guards after the callers exit.
+Do not restore the retired Python terminal or a second renderer implementation.

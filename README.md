@@ -45,8 +45,11 @@ The optional [tmux component](tmux/README.md) uses the same saved events.
 It provides a persistent sidebar, colored status indicators, search, and conversation recovery.
 It works without the macOS panel running and adds no duplicate status hooks.
 
-After installing the shared hooks, run `python3 tmux/install.py` to inspect its plan.
-Run `python3 tmux/install.py --apply --reload` to install it on that host.
+The terminal component is a Rust binary with no Python runtime dependency.
+Build it with `cargo build --release --locked --manifest-path tmux/Cargo.toml`.
+Run `tmux/target/release/agent-stat-tmux install` to inspect its plan.
+Add `--apply --reload --restart` to install it and replace existing sidebar processes.
+Shared hooks are optional when you do not need agent status dots.
 
 ## Documentation
 
