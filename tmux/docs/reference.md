@@ -13,6 +13,9 @@ For procedures, see the [how-to guides](how-to.md). For a first session, use the
 
 The macOS panel builds separately with `bash build.sh`; it does not require Cargo.
 
+Use `install --shared --apply --reload --restart` to share one renderer across the server.
+See the [shared renderer and memory measurements](shared-render-experiment.md) for controls, recovery, and measured memory use.
+
 ## Controls
 
 Ctrl+b means the default tmux prefix: press it, release it, then press the next key.
@@ -122,6 +125,7 @@ Run `tmux/target/release/agent-stat-tmux install [FLAGS]` from the repository ro
 |---|---|
 | None | Print the plan without writes. |
 | `--apply` | Install the binary and configuration, with a private backup. |
+| `--shared` | Use one renderer for all enabled windows and sessions on a server. Keep this flag on upgrades. |
 | `--reload` | Reload bindings on a running server; requires `--apply`. |
 | `--restart` | Reload and replace sidebar processes and monitors; preserve content processes. Requires `--apply`. |
 | `--home DIR` | Choose an installation home. |

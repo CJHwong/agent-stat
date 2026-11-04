@@ -309,6 +309,11 @@ pub fn monitor(options: &Options) -> io::Result<()> {
     let mut seen = false;
     let mut availability = None;
     while running() && rt::exists(options) {
+        if crate::shared::enabled(options)? {
+            if let Err(error) = crate::shared::start(options) {
+                rt::log(&format!("Shared service: {error}"));
+            }
+        }
         match save(options, &mut reader, seen) {
             Ok(snapshot) => seen |= recoverable(&snapshot),
             Err(error) => rt::log(&format!("Snapshot: {error}")),

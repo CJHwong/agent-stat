@@ -1,4 +1,5 @@
 set-option -g @window_sidebar_enabled 0
+set-option -g @window_sidebar_shared @SHARED_DEFAULT@
 set-option -g mouse on
 set-option -g status off
 set-option -s escape-time 20

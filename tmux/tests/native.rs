@@ -923,6 +923,204 @@ struct Client {
     slave: fs::File,
     width: u16,
 }
+
+#[test]
+fn shared_sidebars_keep_mouse_keyboard_new_windows_and_service_recovery() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--shared",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("shared", "sleep 120");
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    let first = sandbox.tmux(&["display-message", "-p", "-t", "shared:", "#{pane_id}"]);
+    sandbox.tmux(&[
+        "set-option",
+        "-p",
+        "-t",
+        &first,
+        "@window_sidebar_label",
+        "First content",
+    ]);
+    success(sandbox.command("shared", "enable").output().unwrap());
+    let second = sandbox.tmux(&[
+        "new-window",
+        "-d",
+        "-t",
+        "shared:",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "sleep 120",
+    ]);
+    sandbox.tmux(&[
+        "set-option",
+        "-p",
+        "-t",
+        &second,
+        "@window_sidebar_label",
+        "Second content",
+    ]);
+    let mut client = Client::attach(&sandbox, "shared");
+    client.drain(Duration::from_millis(200));
+    let sidebar = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        &first,
+        "#{@window_sidebar_pane}",
+    ]);
+    client.wait("shared renderer draws both windows", || {
+        sandbox
+            .tmux(&["capture-pane", "-p", "-t", &sidebar])
+            .contains("Second content")
+    });
+    let capture = sandbox.tmux(&["capture-pane", "-p", "-t", &sidebar]);
+    let row = capture
+        .lines()
+        .position(|line| line.contains("Second content"))
+        .unwrap() as u16;
+    client.click(&sandbox, &sidebar, 5, row, false);
+    client.wait("shared sidebar click selects another window", || {
+        sandbox.tmux(&["display-message", "-p", "-t", "shared:", "#{pane_id}"]) == second
+    });
+    let next_sidebar = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        &second,
+        "#{@window_sidebar_pane}",
+    ]);
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &next_sidebar,
+            "#{@shared_sidebar}"
+        ]),
+        "1"
+    );
+    assert!(matches!(
+        sandbox
+            .tmux(&["display-message", "-p", "-t", &next_sidebar, "#{pane_pid}"])
+            .as_str(),
+        "" | "0"
+    ));
+    sandbox.tmux(&["select-pane", "-t", &next_sidebar]);
+    client.send(b"\x1b[A\r");
+    client.wait("shared sidebar keyboard selects first content", || {
+        sandbox.tmux(&["display-message", "-p", "-t", "shared:", "#{pane_id}"]) == first
+    });
+    sandbox.tmux(&["select-pane", "-t", &sidebar]);
+    client.click(&sandbox, &first, 5, 10, false);
+    client.wait("ordinary content clicks keep their binding", || {
+        sandbox.tmux(&["display-message", "-p", "-t", "shared:", "#{pane_id}"]) == first
+    });
+    let pid = sandbox.tmux(&["show-option", "-sqv", "@window_sidebar_service_pid"]);
+    assert!(!pid.is_empty());
+    unsafe {
+        libc::kill(pid.parse().unwrap(), libc::SIGTERM);
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    success(sandbox.command("shared", "ensure").output().unwrap());
+    client.wait("shared service restarts", || {
+        let current = sandbox.tmux(&["show-option", "-sqv", "@window_sidebar_service_pid"]);
+        !current.is_empty() && current != pid
+    });
+    client.wait("shared sidebar redraws after service restart", || {
+        sandbox
+            .tmux(&["capture-pane", "-p", "-t", &sidebar])
+            .contains("Second content")
+    });
+    let service = sandbox.tmux(&["show-option", "-sqv", "@window_sidebar_service_pid"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "other", "sleep 120"]);
+    success(sandbox.command("other", "enable").output().unwrap());
+    let mut other = Client::attach(&sandbox, "other");
+    let other_sidebar = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        "other:",
+        "#{@window_sidebar_pane}",
+    ]);
+    other.wait("another session shares the service", || {
+        sandbox
+            .tmux(&["capture-pane", "-p", "-t", &other_sidebar])
+            .contains("+ New")
+    });
+    assert_eq!(
+        service,
+        sandbox.tmux(&["show-option", "-sqv", "@window_sidebar_service_pid"])
+    );
+    assert!(
+        !sandbox
+            .tmux(&["capture-pane", "-p", "-t", &other_sidebar])
+            .contains("First content")
+    );
+    for shared in [true, false] {
+        let before = sandbox
+            .tmux(&[
+                "list-panes",
+                "-a",
+                "-F",
+                "#{pane_id} #{pane_pid} #{@window_sidebar}",
+            ])
+            .lines()
+            .filter(|line| line.ends_with(' '))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let mut installer = Command::new(binary());
+        installer.args([
+            "install",
+            "--home",
+            sandbox.root.to_str().unwrap(),
+            "--apply",
+            "--restart",
+            "--socket",
+            sandbox.socket.to_str().unwrap(),
+        ]);
+        installer
+            .env("HOME", &sandbox.root)
+            .env("TMUX_SIDEBAR_STATE_DIR", sandbox.root.join("state"))
+            .env("AGENT_STAT_DIR", sandbox.root.join("events"));
+        if shared {
+            installer.arg("--shared");
+        }
+        success(installer.output().unwrap());
+        let after = sandbox
+            .tmux(&[
+                "list-panes",
+                "-a",
+                "-F",
+                "#{pane_id} #{pane_pid} #{@window_sidebar}",
+            ])
+            .lines()
+            .filter(|line| line.ends_with(' '))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        assert_eq!(before, after);
+        assert_eq!(
+            sandbox.tmux(&["show-option", "-gqv", "@window_sidebar_shared"]),
+            if shared { "1" } else { "0" }
+        );
+    }
+}
 impl Client {
     fn attach(sandbox: &Sandbox, session: &str) -> Self {
         Self::open(sandbox, &["attach-session", "-t", session])
@@ -1537,18 +1735,27 @@ fn rename_prompts_keep_names_literal() {
 
 #[test]
 fn native_terminal_checks_prefix_latency_new_windows_grouping_and_overlays() {
+    terminal_controls(false);
+}
+
+#[test]
+fn shared_terminal_keeps_menus_search_repeated_clicks_and_overlays() {
+    terminal_controls(true);
+}
+
+fn terminal_controls(shared: bool) {
     let sandbox = Sandbox::new();
-    success(
-        Command::new(binary())
-            .args([
-                "install",
-                "--home",
-                sandbox.root.to_str().unwrap(),
-                "--apply",
-            ])
-            .output()
-            .unwrap(),
-    );
+    let mut installer = Command::new(binary());
+    installer.args([
+        "install",
+        "--home",
+        sandbox.root.to_str().unwrap(),
+        "--apply",
+    ]);
+    if shared {
+        installer.arg("--shared");
+    }
+    success(installer.output().unwrap());
     sandbox.start("0", "sleep 120");
     sandbox.tmux(&[
         "source-file",
@@ -1569,7 +1776,12 @@ fn native_terminal_checks_prefix_latency_new_windows_grouping_and_overlays() {
         "@window_sidebar_label",
         "Native controls",
     ]);
-    success(sandbox.command("0", "enable").output().unwrap());
+    let mut enable = sandbox.command("0", "enable");
+    if shared {
+        enable.env("TMUX", format!("{},1,0", sandbox.socket.display()));
+        enable.env("TMUX_PANE", &content);
+    }
+    success(enable.output().unwrap());
     let sidebar = sandbox.tmux(&[
         "display-message",
         "-p",
@@ -1750,7 +1962,7 @@ fn native_terminal_checks_prefix_latency_new_windows_grouping_and_overlays() {
     assert_eq!(row, (height - 1) / 2);
     assert_eq!(arrow.chars().position(|letter| letter == '▶'), Some(1));
     let width = sandbox.tmux(&["display-message", "-p", "-t", &content, "#{pane_width}"]);
-    client.click(&sandbox, &sidebar, 0, 1, false);
+    client.click(&sandbox, &sidebar, 1, row as u16, false);
     client.expect("Esc: Close overlay");
     assert_eq!(
         sandbox.tmux(&["display-message", "-p", "-t", &content, "#{pane_width}"]),
@@ -1763,7 +1975,7 @@ fn native_terminal_checks_prefix_latency_new_windows_grouping_and_overlays() {
             .lines()
             .any(|role| role == "2")
     });
-    client.click(&sandbox, &sidebar, 0, 1, false);
+    client.click(&sandbox, &sidebar, 1, row as u16, false);
     client.expect("Esc: Close overlay");
     client.resize(120);
     client.wait("overlay docks", || {

@@ -36,6 +36,7 @@ pub fn run() -> io::Result<()> {
     let mut apply = false;
     let mut reload = false;
     let mut restart = false;
+    let mut shared = false;
     let mut socket = None;
     let mut arguments = env::args().skip(2);
     while let Some(argument) = arguments.next() {
@@ -50,6 +51,7 @@ pub fn run() -> io::Result<()> {
             "--socket" => socket = arguments.next(),
             "--apply" => apply = true,
             "--reload" => reload = true,
+            "--shared" => shared = true,
             "--restart" => {
                 restart = true;
                 reload = true;
@@ -100,6 +102,7 @@ pub fn run() -> io::Result<()> {
         &config,
         include_str!("../sidebar.conf.in")
             .replace("@SIDEBAR_COMMAND@", &command)
+            .replace("@SHARED_DEFAULT@", if shared { "1" } else { "0" })
             .as_bytes(),
     )?;
     let existing = match fs::read_to_string(&main) {
@@ -212,6 +215,12 @@ fn replace(home: &Path, binary: &Path, socket: &str) -> io::Result<()> {
         .map(|fields| (fields[0].to_owned(), fields[1].to_owned()))
         .collect::<HashMap<_, _>>();
     stop_monitors(home, binary, &contents)?;
+    let shared_options = Options {
+        socket: socket.into(),
+        ..Options::default()
+    };
+    crate::shared::stop(&shared_options)?;
+    let shared = crate::shared::enabled(&shared_options)?;
     let mut sessions = HashSet::new();
     let mut count = 0;
     for pane in panes.iter().filter(|fields| fields[2] == "1") {
@@ -231,7 +240,15 @@ fn replace(home: &Path, binary: &Path, socket: &str) -> io::Result<()> {
             pane[3].into(),
             "render".into(),
         ]);
-        model::tmux(socket, &["respawn-pane", "-k", "-t", pane[0], &command])?;
+        if shared {
+            crate::shared::replace_pane(&options, pane[0], pane[4])?;
+        } else {
+            model::tmux(socket, &["respawn-pane", "-k", "-t", pane[0], &command])?;
+            model::tmux(
+                socket,
+                &["set-option", "-p", "-u", "-t", pane[0], "@shared_sidebar"],
+            )?;
+        }
         sessions.insert(options.session);
         count += 1;
     }

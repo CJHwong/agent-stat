@@ -265,6 +265,43 @@ fn draw_entry(
 
 fn draw(view: &View) -> io::Result<()> {
     let (width, height) = terminal::size()?;
+    io::stdout().write_all(&frame(view, width, height)?)?;
+    io::stdout().flush()
+}
+
+pub(crate) struct SharedView(View);
+
+impl SharedView {
+    pub fn new() -> Self {
+        Self(View {
+            live: true,
+            ..View::default()
+        })
+    }
+
+    pub fn refresh(&mut self, entries: Vec<Entry>) {
+        self.0.update(entries);
+    }
+
+    pub fn frame(&self, width: u16, height: u16) -> io::Result<Vec<u8>> {
+        frame(&self.0, width, height)
+    }
+
+    pub fn input(&mut self, options: &Options, event: Event, size: (u16, u16)) -> io::Result<()> {
+        match event {
+            Event::Mouse(event) => {
+                mouse_at(&mut self.0, options, event, size)?;
+            }
+            Event::Key(event) => {
+                key(&mut self.0, options, event)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+fn frame(view: &View, width: u16, height: u16) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
     queue!(
         buffer,
@@ -282,8 +319,7 @@ fn draw(view: &View) -> io::Result<()> {
             Print("▶")
         )?;
         queue!(buffer, ResetColor, SetAttribute(Attribute::Reset))?;
-        io::stdout().write_all(&buffer)?;
-        return io::stdout().flush();
+        return Ok(buffer);
     }
     let matches = view.matches();
     if view.live {
@@ -383,8 +419,7 @@ fn draw(view: &View) -> io::Result<()> {
             width,
         )?;
     }
-    io::stdout().write_all(&buffer)?;
-    io::stdout().flush()
+    Ok(buffer)
 }
 
 fn draw_help(buffer: &mut Vec<u8>, width: u16, height: u16) -> io::Result<()> {
@@ -430,6 +465,23 @@ fn draw_details(
 }
 
 fn invoke(options: &Options, action: &str, entry: Option<&Entry>) -> io::Result<()> {
+    if options.detached_actions {
+        let options = options.clone();
+        let entry = entry.cloned();
+        let action = action.to_owned();
+        std::thread::spawn(move || {
+            let result = crate::actions::with_entry(
+                &options,
+                &action,
+                entry.as_ref().map(|entry| entry.pane.as_str()),
+                entry.as_ref(),
+            );
+            if let Err(error) = result {
+                crate::runtime::log(&format!("Sidebar action: {error}"));
+            }
+        });
+        return Ok(());
+    }
     crate::actions::with_entry(
         options,
         action,
@@ -476,6 +528,15 @@ fn overflow(shown: &[(usize, &Entry, u16)], total: usize) -> (bool, bool) {
 }
 
 fn mouse(view: &mut View, options: &Options, event: event::MouseEvent) -> io::Result<bool> {
+    mouse_at(view, options, event, terminal::size()?)
+}
+
+fn mouse_at(
+    view: &mut View,
+    options: &Options,
+    event: event::MouseEvent,
+    (width, height): (u16, u16),
+) -> io::Result<bool> {
     // Tmux can forward repeated clicks as releases. Activate each left click once.
     let mut event = event;
     if event.kind == MouseEventKind::Down(MouseButton::Left) {
@@ -484,7 +545,6 @@ fn mouse(view: &mut View, options: &Options, event: event::MouseEvent) -> io::Re
     if event.kind == MouseEventKind::Up(MouseButton::Left) {
         event.kind = MouseEventKind::Down(MouseButton::Left);
     }
-    let (width, height) = terminal::size()?;
     let active = view
         .entries
         .iter()
@@ -818,6 +878,26 @@ fn wrapped_line(text: &str, width: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn shared_frame_draws_content_and_handles_narrow_panes() {
+        let entries = vec![crate::model::Entry {
+            window: "@0".into(),
+            pane: "%0".into(),
+            title: "Shared probe".into(),
+            folder: "example".into(),
+            active: true,
+            ..Default::default()
+        }];
+        let mut view = super::SharedView::new();
+        view.refresh(entries);
+        let frame = view.frame(28, 40).unwrap();
+        let text = String::from_utf8(frame).unwrap();
+        assert!(text.contains("Shared probe"));
+        assert!(text.contains("example"));
+        let narrow = view.frame(3, 40).unwrap();
+        assert!(String::from_utf8(narrow).unwrap().contains('▶'));
+    }
+
     use super::*;
     #[test]
     fn recover_row_uses_only_published_availability() {

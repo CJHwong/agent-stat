@@ -436,6 +436,7 @@ pub fn ensure(options: &Options) -> io::Result<()> {
     {
         return Ok(());
     }
+    let shared = crate::shared::enabled(options)?;
     let existing = model::tmux(
         &options.socket,
         &[
@@ -508,13 +509,23 @@ pub fn ensure(options: &Options) -> io::Result<()> {
                     "-P",
                     "-F",
                     "#{pane_id}",
-                    &rt::command(options, "render", None)?,
+                    &if shared {
+                        String::new()
+                    } else {
+                        rt::command(options, "render", None)?
+                    },
                 ],
             )?;
             model::tmux(
                 &options.socket,
                 &["set-option", "-p", "-t", &pane, "@window_sidebar", "1"],
             )?;
+            if shared {
+                model::tmux(
+                    &options.socket,
+                    &["set-option", "-p", "-t", &pane, "@shared_sidebar", "1"],
+                )?;
+            }
             pane
         };
         model::tmux(
@@ -670,6 +681,9 @@ fn sidebars(options: &Options, action: &str) -> io::Result<()> {
     if rt::exists(options) && field(options, &options.session, "#{@window_sidebar_enabled}")? == "1"
     {
         start_monitor(options)?;
+        if crate::shared::enabled(options)? {
+            crate::shared::start(options)?;
+        }
     }
     Ok(())
 }

@@ -25,6 +25,8 @@ impl Control {
                 "-t",
                 &options.session,
             ])
+            .env_remove("TMUX")
+            .env_remove("TMUX_PANE")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

@@ -23,6 +23,10 @@ tmux/target/release/agent-stat-tmux install --apply --reload --restart
 The installer replaces sidebar processes and monitors while preserving content panes and their processes.
 It prints the backup path. See the [installer flags](reference.md#installer-flags) for other deployment options.
 
+To share one renderer across all windows, add `--shared` to the installer command.
+Keep that flag on later upgrades. Omit it to return to separate renderers.
+See the [shared renderer](shared-render-experiment.md) for memory measurements and restart behavior.
+
 ## Install on another machine
 
 1. Connect to that machine and obtain a copy of this repository.
