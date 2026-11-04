@@ -1,0 +1,55 @@
+# Explanation
+
+For instructions, use the [tutorial](tutorial.md) or [how-to guides](how-to.md).
+This page explains the design and its limits.
+
+## Why status hooks are optional
+
+The sidebar manages tmux panes independently of agent status.
+The macOS panel and sidebar read the same agent-stat events, so the terminal installer adds no agent hooks.
+Without those events, navigation and recovery still work; rows have no status dot.
+
+The status reader checks the host, process ancestry, and process start time before matching a record to a pane.
+The terminal tracks viewed responses separately from the macOS panel.
+Acknowledging attention in one interface does not acknowledge it in the other.
+
+## Why shells start after layout preparation
+
+A shell can print its prompt before tmux finishes adding the sidebar.
+A later resize can leave repeated prompts. The shell launcher prepares the layout before starting the login shell.
+It also sets a new split's terminal dimensions before that shell prints.
+Existing custom `default-command` settings take priority.
+
+The layout code prepares inactive windows before selection when window sizing is automatic.
+That keeps the sidebar from stretching during a switch. Manual sizing and the native sizing policy remain intact.
+Auto zoom uses native resizing, saves the base layout, and keeps other panes visible.
+If the pane set changes, the next focus change records a new base layout.
+
+## Why recovery cannot preserve a running process
+
+Snapshots describe how to reopen work. They do not save the memory of a running process.
+Claude and Codex conversations can resume through those tools' own commands and saved profiles.
+Other programs need their saved arguments, folder, and a new process environment.
+That is why command reruns require an explicit selection in the preview.
+
+## Why a closed program does not stay recoverable
+
+The monitor saves about every ten seconds. A fresh empty shell after a restart does not erase the last recoverable snapshot.
+Once the monitor sees recoverable work, later snapshots follow the session's current state, including deliberate closures.
+A closed window therefore disappears from later snapshots. Recovery is a recent session snapshot, not an archive of every closed program.
+Tests simulate restarts with isolated sessions; they do not reboot the host.
+
+## Why an extra tmux client appears
+
+A persistent control client detects the prefix key. It ignores terminal size and receives no pane output.
+It appears in `tmux list-clients` for each enabled session.
+Input handling reuses pane records and wrapped text instead of scanning processes for every key or scroll event.
+Hidden sidebars check their records every five seconds; selecting a window wakes its sidebar immediately.
+
+## Why an upgrade can leave empty hook files
+
+A running agent can retain an old Python hook command.
+The installer removes retired Python terminal files and prototype binaries after replacement.
+Migration leaves empty compatibility endpoints so that old callers do not fail and block a prompt.
+They run no Python implementation. The Rust monitor removes them after the recorded agent processes exit.
+Fresh installations create no compatibility guards. Shared hooks, the stream helper, and the macOS app remain separate components.

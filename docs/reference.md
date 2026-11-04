@@ -1,7 +1,7 @@
 # Reference
 
 This reference describes the macOS panel and shared event storage.
-The [terminal reference](../tmux/README.md) covers tmux controls, status, and recovery.
+The [terminal reference](../tmux/docs/reference.md) covers tmux controls, status, and recovery.
 
 ## What a row shows
 

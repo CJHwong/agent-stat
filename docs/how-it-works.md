@@ -15,7 +15,8 @@ Menus, overlays, recovery, snapshots, and shortcut detection run in Rust.
 The terminal reads the shared events without a Python helper.
 It saves conversation recovery data separately from the shared event history.
 Sidebar unread markers and panel acknowledgements remain independent.
-See the [terminal guide](../tmux/README.md) for its supported host, controls, and recovery limits.
+See the [terminal explanation](../tmux/docs/explanation.md) for layout and recovery behavior.
+See the [terminal reference](../tmux/docs/reference.md) for supported hosts, controls, and recovery limits.
 
 ## One writer per file
 

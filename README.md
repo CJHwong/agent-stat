@@ -46,16 +46,14 @@ It provides a persistent sidebar, colored status indicators, search, and convers
 It works without the macOS panel running and adds no duplicate status hooks.
 
 The terminal component is a Rust binary with no Python runtime dependency.
-Build it with `cargo build --release --locked --manifest-path tmux/Cargo.toml`.
-Run `tmux/target/release/agent-stat-tmux install` to inspect its plan.
-Add `--apply --reload --restart` to install it and replace existing sidebar processes.
+Follow [your first sidebar session](tmux/docs/tutorial.md) to build, install, and try it.
 Shared hooks are optional when you do not need agent status dots.
 
 ## Documentation
 
 | Document | What is in it |
 |---|---|
-| [tmux/README.md](tmux/README.md) | Terminal installation, controls, status colors, recovery, and tests. |
+| [tmux/README.md](tmux/README.md) | Start here for the terminal tutorial, how-to guides, reference, and explanation. |
 | [docs/guides.md](docs/guides.md) | Build or update the app, navigate sessions, configure login, and receive events from another machine. |
 | [docs/reference.md](docs/reference.md) | What each colour means, what a row says, the shape of the events file, where the files live, the messages a click can print, and the timing constants. |
 | [docs/how-it-works.md](docs/how-it-works.md) | Why one writer per file, why the hook cannot block an agent, why a remote click needs a route, and why the fold is deterministic. |
