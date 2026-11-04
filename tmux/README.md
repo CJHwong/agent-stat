@@ -45,20 +45,23 @@ Without recorded events, the sidebar still works and rows show no dots.
 | New | Open a window in the current content pane's folder. |
 | Split | Choose a split direction. |
 | Rename | Set a manual pane label. |
-| F1, then `N` | Reset the pane label to its automatic title or command. |
+| F1, then Reset pane name | Reset the pane label to its automatic title or command. |
 | F1 or right-click | Open the pane menu. |
 | Menu, then `f`, or Ctrl+b f | Show the full title, folder, and command. |
 | Menu, then `s` | Show the status legend. |
 | Ctrl+b / or / Search | Search titles, folders, and commands. |
-| F1, then `u`, or Ctrl+b r | Preview saved conversations and commands. |
+| F1, then `r`, or Ctrl+b r | Preview saved conversations and commands. |
 | Ctrl+b Tab | Toggle the sidebar. |
 | Ctrl+b z | Zoom the content pane or restore its layout, including after a sidebar click. |
 | Ctrl+b ? | Open the full shortcut list. Escape or `q` closes it. |
 
 New windows receive a sidebar automatically in an enabled session.
 New sessions receive it when first attached.
+The creation hook also covers plain `tmux` when it starts the first attached session.
 The New button prepares the sidebar before it starts the shell and selects the new window.
 The shell starts at its final width, so its prompt does not redraw during sidebar setup.
+When `default-command` is empty, the configuration installs a native shell launcher for ordinary tmux sessions, windows, and splits.
+It prepares the sidebar before it executes the login shell. Existing custom `default-command` settings take priority.
 When the last content pane exits, its sidebar closes with the window.
 The previous adjacent window receives content focus. If none exists, the next window receives it.
 Rows remain in numeric window order.
@@ -68,7 +71,27 @@ The second line shows the current folder name.
 Windows with several content panes have a group heading and a row for each pane.
 Borders show pane titles without the misleading pane number contributed by the sidebar.
 
+Auto zoom starts enabled. Selecting a content pane gives it about 85% of the available width or height.
+Other panes stay visible. Native split limits can reduce that size in nested layouts.
+Each window keeps its own setting. Detaching or switching windows preserves it, and recovery records it.
+Click the top-right pane's border label to toggle auto zoom, or use F1, then `a`.
+The label shows `Auto zoom: on` or `Auto zoom: off`. A narrow pane shows `Zoom:on` or `Zoom:off`.
+On tmux 3.7c and 3.8, the click target covers that pane's border because border coordinates are unavailable.
+Dragging a border still uses native tmux resizing.
+Turning auto zoom off restores the base layout when the same panes remain.
+If panes change, the next focus change records the new layout. Recovery saves the base layout.
+Native full zoom remains separate and keeps its Ctrl+b z shortcut.
+
+F1 groups creation, layout, naming, information, and closing actions with separator lines.
+Its keys use lowercase letters or native split symbols: `c` creates a window, `%` splits side by side, and `"` splits above and below.
+Use `p` to rename a pane, `w` to rename a window, `/` to search, `f` to view the command, and `r` to recover work.
+Use `x` to close a pane or `d` to detach. Both close actions require confirmation.
+Reset pane name and Close window have no direct key. Select them with the mouse or arrow keys.
+Escape closes the menu.
+
 The sidebar stays 28 columns wide.
+Inactive automatic-size windows follow the current window's size before selection, so switching does not stretch the sidebar before it settles.
+This preserves the native sizing policy and leaves manually sized windows unchanged.
 Below 100 terminal columns, it becomes a three-column rail with a bold `▶` arrow centered horizontally and vertically.
 The arrow uses the terminal's normal background.
 Click the expander to open a floating list without narrowing shell panes.

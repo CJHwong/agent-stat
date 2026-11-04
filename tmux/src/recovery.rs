@@ -34,7 +34,12 @@ pub struct Window {
     pub name: String,
     pub layout: String,
     pub label: String,
+    #[serde(default = "focus_enabled")]
+    pub focus_zoom: bool,
     pub panes: Vec<Pane>,
+}
+fn focus_enabled() -> bool {
+    true
 }
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -181,13 +186,13 @@ pub fn capture(options: &Options, reader: &mut Reader) -> io::Result<Snapshot> {
             "-t",
             &options.session,
             "-F",
-            "#{window_id}\t#{window_index}\t#{window_name}\t#{window_layout}\t#{@window_sidebar_window_label}",
+            "#{window_id}\t#{window_index}\t#{window_name}\t#{window_layout}\t#{@window_sidebar_window_label}\t#{@window_sidebar_focus_zoom}\t#{@window_sidebar_focus_layout}\t#{@window_sidebar_focus_panes}",
         ],
     )?;
     let mut windows = Vec::new();
     for row in rows.lines() {
         let fields: Vec<_> = row.split('\t').collect();
-        if fields.len() != 5 {
+        if fields.len() != 8 {
             continue;
         }
         let mut window = Window {
@@ -195,6 +200,7 @@ pub fn capture(options: &Options, reader: &mut Reader) -> io::Result<Snapshot> {
             name: fields[2].into(),
             layout: fields[3].into(),
             label: fields[4].into(),
+            focus_zoom: fields[5] != "0",
             panes: Vec::new(),
         };
         let panes = model::tmux(
@@ -212,6 +218,16 @@ pub fn capture(options: &Options, reader: &mut Reader) -> io::Result<Snapshot> {
             .filter_map(|line| saved_pane(line, &agents, &processes))
         {
             window.panes.push(pane);
+        }
+        let mut identifiers = window
+            .panes
+            .iter()
+            .map(|pane| pane.pane_id.as_str())
+            .collect::<Vec<_>>();
+        identifiers.sort_unstable();
+        if !fields[6].is_empty() && identifiers.join(",") == fields[7] {
+            // Recover the base layout so the first focused pane does not become the new baseline.
+            window.layout = fields[6].into();
         }
         if !window.panes.is_empty() {
             windows.push(window);
@@ -511,6 +527,9 @@ pub fn restore(options: &Options, selected: &HashSet<String>) -> io::Result<Opti
         restore_window(&target, &window_id, window, &mut active, selected)?;
     }
     actions::run(&target, "enable", None)?;
+    let mut focused = target.clone();
+    focused.pane = Some(format!("{recovered}:"));
+    crate::focus::run(&focused, false)?;
     if let Some(client) = &options.client {
         model::tmux(
             &options.socket,
@@ -561,6 +580,17 @@ fn restore_window(
     model::tmux(
         &options.socket,
         &["rename-window", "-t", window_id, &window.name],
+    )?;
+    model::tmux(
+        &options.socket,
+        &[
+            "set-option",
+            "-w",
+            "-t",
+            window_id,
+            "@window_sidebar_focus_zoom",
+            if window.focus_zoom { "1" } else { "0" },
+        ],
     )?;
     if !window.label.is_empty() {
         model::tmux(

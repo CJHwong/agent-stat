@@ -1,6 +1,7 @@
 mod actions;
 mod commands;
 mod events;
+mod focus;
 mod install;
 mod model;
 mod prefix;
@@ -76,7 +77,7 @@ fn options() -> io::Result<Options> {
                 "-p",
                 "-t",
                 result.pane.as_deref().unwrap_or(""),
-                "#{session_name}",
+                "#{session_id}",
             ],
         )?;
     }
@@ -212,6 +213,8 @@ fn run() -> io::Result<()> {
     match options.action.as_str() {
         "render"|"overlay"|"search-ui"|"dump"=>render(&options),
         "prefix-help"=>prefix::render(&options),
+        "shell"=>actions::shell(&options),
+        "focus"|"focus-toggle"=>focus::run(&options,options.action=="focus-toggle"),
         "keys-ui"=>ui::pager("TMUX SHORTCUTS",prefix::shortcuts(&options)?),
         "legend-ui"=>ui::pager("STATUS COLORS","Green: Working\nRed: Request or response needs attention\nOrange: Failed\nBlue: Ready or acknowledged request/response\nPurple: Interrupted\nGray: Closed\nNo dot: No recorded agent status\n\n* Needs attention. Select its content pane to clear it.\nViewing a permission request does not approve it.".into()),
         "command-ui"=>{let processes=model::processes()?;let entry=actions::context_with_processes(&options,options.pane.as_deref(),&processes)?;let capture=commands::capture(entry.root_pid,&processes);ui::pager("FULL TITLE AND COMMAND",format!("Title: {}\nFolder: {}\n\nCommand:\n{}",entry.title,entry.cwd,capture.command))},

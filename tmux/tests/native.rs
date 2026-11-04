@@ -24,6 +24,15 @@ struct Sandbox {
     socket: PathBuf,
 }
 impl Sandbox {
+    fn geometry(&self, target: &str) -> String {
+        self.tmux(&[
+            "list-panes",
+            "-t",
+            target,
+            "-F",
+            "#{pane_id}:#{pane_left}:#{pane_top}:#{pane_width}:#{pane_height}",
+        ])
+    }
     fn new() -> Self {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -112,6 +121,366 @@ impl Drop for Sandbox {
             }
         }
     }
+}
+
+#[test]
+fn focus_zoom_preserves_each_window_layout_and_sidebar_width() {
+    let sandbox = Sandbox::new();
+    sandbox.start("focus", "sleep 120");
+    let first = sandbox.tmux(&["display-message", "-p", "-t", "focus:", "#{pane_id}"]);
+    success(sandbox.command("focus", "enable").output().unwrap());
+    let sidebar = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        &first,
+        "#{@window_sidebar_pane}",
+    ]);
+    let second = sandbox.tmux(&[
+        "split-window",
+        "-d",
+        "-h",
+        "-t",
+        &first,
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "sleep 120",
+    ]);
+    let original = sandbox.tmux(&["display-message", "-p", "-t", &first, "#{window_layout}"]);
+    let original_geometry = sandbox.geometry(&first);
+    success(
+        sandbox
+            .command("focus", "focus")
+            .args(["--pane", &first])
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(
+        sandbox.tmux(&["display-message", "-p", "-t", &sidebar, "#{pane_width}"]),
+        "28"
+    );
+    let width = |pane: &str| {
+        sandbox
+            .tmux(&["display-message", "-p", "-t", pane, "#{pane_width}"])
+            .parse::<u16>()
+            .unwrap()
+    };
+    assert_eq!(width(&first), 77);
+    assert!(width(&second) > 0);
+    sandbox.tmux(&["select-pane", "-t", &second]);
+    success(
+        sandbox
+            .command("focus", "focus")
+            .args(["--pane", &second])
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(width(&second), 77);
+    assert!(width(&first) > 0);
+    let enlarged_snapshot: serde_json::Value = serde_json::from_str(&success(
+        sandbox.command("focus", "snapshot").output().unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(enlarged_snapshot["windows"][0]["layout"], original);
+    success(
+        sandbox
+            .command("focus", "focus-toggle")
+            .args(["--pane", &second])
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(sandbox.geometry(&first), original_geometry);
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &first,
+            "#{@window_sidebar_focus_zoom}"
+        ]),
+        "0"
+    );
+    success(sandbox.command("focus", "new").output().unwrap());
+    let fresh = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        "focus:",
+        "#{@window_sidebar_focus_zoom}",
+    ]);
+    assert_ne!(fresh, "0");
+    let snapshot: serde_json::Value = serde_json::from_str(&success(
+        sandbox.command("focus", "snapshot").output().unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(snapshot["windows"][0]["focus_zoom"], false);
+    assert_eq!(snapshot["windows"][1]["focus_zoom"], true);
+    sandbox.tmux(&["new-session", "-d", "-s", "keeper", "sleep 120"]);
+    sandbox.tmux(&["kill-session", "-t", "focus"]);
+    success(
+        sandbox
+            .command("focus", "restore")
+            .args(["--rerun", &first])
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "recovered-focus:0",
+            "#{@window_sidebar_focus_zoom}"
+        ]),
+        "0"
+    );
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "recovered-focus:1",
+            "#{@window_sidebar_focus_zoom}"
+        ]),
+        "1"
+    );
+}
+
+#[test]
+fn focus_zoom_handles_stacked_and_nested_layouts_without_touching_the_sidebar() {
+    for nested in [false, true] {
+        let sandbox = Sandbox::new();
+        sandbox.start("focus", "sleep 120");
+        success(sandbox.command("focus", "enable").output().unwrap());
+        let first = sandbox.tmux(&["display-message", "-p", "-t", "focus:", "#{pane_id}"]);
+        let sidebar = sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &first,
+            "#{@window_sidebar_pane}",
+        ]);
+        sandbox.tmux(&[
+            "split-window",
+            "-d",
+            if nested { "-h" } else { "-v" },
+            "-t",
+            &first,
+            "sleep 120",
+        ]);
+        if nested {
+            sandbox.tmux(&["split-window", "-d", "-v", "-t", &first, "sleep 120"]);
+        }
+        let original_geometry = sandbox.geometry(&first);
+        success(
+            sandbox
+                .command("focus", "focus")
+                .args(["--pane", &first])
+                .output()
+                .unwrap(),
+        );
+        assert_eq!(
+            sandbox.tmux(&["display-message", "-p", "-t", &sidebar, "#{pane_width}"]),
+            "28"
+        );
+        assert!(
+            sandbox
+                .tmux(&["display-message", "-p", "-t", &first, "#{pane_height}"])
+                .parse::<u16>()
+                .unwrap()
+                >= 33
+        );
+        sandbox.tmux(&["resize-pane", "-Z", "-t", &first]);
+        success(
+            sandbox
+                .command("focus", "focus-toggle")
+                .args(["--pane", &first])
+                .output()
+                .unwrap(),
+        );
+        assert_eq!(
+            sandbox.tmux(&[
+                "display-message",
+                "-p",
+                "-t",
+                &first,
+                "#{window_zoomed_flag}"
+            ]),
+            "1"
+        );
+        sandbox.tmux(&["resize-pane", "-Z", "-t", &first]);
+        success(
+            sandbox
+                .command("focus", "focus")
+                .args(["--pane", &first])
+                .output()
+                .unwrap(),
+        );
+        assert_eq!(sandbox.geometry(&first), original_geometry);
+        success(
+            sandbox
+                .command("focus", "focus-toggle")
+                .args(["--pane", &first])
+                .output()
+                .unwrap(),
+        );
+        sandbox.tmux(&["resize-window", "-t", &first, "-x", "160"]);
+        success(sandbox.command("focus", "ensure").output().unwrap());
+        success(
+            sandbox
+                .command("focus", "focus-toggle")
+                .args(["--pane", &first])
+                .output()
+                .unwrap(),
+        );
+        assert_eq!(
+            sandbox.tmux(&["display-message", "-p", "-t", &sidebar, "#{pane_width}"]),
+            "28"
+        );
+        assert_eq!(
+            sandbox.tmux(&["display-message", "-p", "-t", &first, "#{window_width}"]),
+            "160"
+        );
+    }
+}
+
+#[test]
+fn focus_toggle_is_clickable_and_native_selection_enlarges_content() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("focus", "sleep 120");
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    sandbox.tmux(&[
+        "set-option",
+        "-w",
+        "-t",
+        "focus:",
+        "@window_sidebar_focus_zoom",
+        "0",
+    ]);
+    success(sandbox.command("focus", "enable").output().unwrap());
+    let first = sandbox.tmux(&["display-message", "-p", "-t", "focus:", "#{pane_id}"]);
+    let second = sandbox.tmux(&[
+        "split-window",
+        "-d",
+        "-h",
+        "-t",
+        &first,
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "sleep 120",
+    ]);
+    let original_geometry = sandbox.geometry(&first);
+    let mut client = Client::attach(&sandbox, "focus");
+    client.expect("Auto zoom: off");
+    client.send(b"\x1b[<0;113;1M\x1b[<0;113;1m");
+    client.wait("click enables focus zoom", || {
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &first,
+            "#{@window_sidebar_focus_zoom}",
+        ]) == "1"
+    });
+    sandbox.tmux(&["select-pane", "-t", &first]);
+    client.wait("left pane receives auto zoom", || {
+        sandbox.tmux(&["display-message", "-p", "-t", &first, "#{pane_width}"]) == "77"
+    });
+    let clients = sandbox.tmux(&[
+        "list-clients",
+        "-t",
+        "focus",
+        "-F",
+        "#{client_name}\t#{client_control_mode}",
+    ]);
+    let terminal = clients
+        .lines()
+        .find_map(|row| row.strip_suffix("\t0"))
+        .unwrap();
+    sandbox.tmux(&["refresh-client", "-t", terminal]);
+    client.expect("Zoom:on");
+    let mouse_started = std::time::Instant::now();
+    client.click(&sandbox, &second, 5, 2, false);
+    client.wait("mouse focus enlarges pane", || {
+        sandbox
+            .tmux(&["display-message", "-p", "-t", &second, "#{pane_width}"])
+            .parse::<u16>()
+            .unwrap()
+            >= 75
+    });
+    let mouse_latency = mouse_started.elapsed();
+    assert!(
+        mouse_latency < Duration::from_millis(300),
+        "Mouse focus latency: {mouse_latency:?}"
+    );
+    let started = std::time::Instant::now();
+    sandbox.tmux(&["select-pane", "-t", &first]);
+    client.wait("native focus enlarges pane", || {
+        sandbox
+            .tmux(&["display-message", "-p", "-t", &first, "#{pane_width}"])
+            .parse::<u16>()
+            .unwrap()
+            >= 75
+    });
+    let native_latency = started.elapsed();
+    assert!(
+        native_latency < Duration::from_millis(300),
+        "Focus zoom latency: {:?}",
+        started.elapsed()
+    );
+    client.drain(Duration::from_millis(40));
+    client.send(b"\x1b[<0;113;1M\x1b[<0;113;1m");
+    client.wait("click restores baseline", || {
+        sandbox.geometry(&first) == original_geometry
+    });
+    client.send(b"\x1b[<0;75;10M\x1b[<32;80;10M\x1b[<0;80;10m");
+    client.wait("native border drag resizes panes", || {
+        sandbox.tmux(&["display-message", "-p", "-t", &first, "#{pane_width}"]) != "45"
+    });
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &first,
+            "#{@window_sidebar_focus_zoom}"
+        ]),
+        "0"
+    );
+    client.drain(Duration::from_millis(40));
+    client.send(b"\x1bOP");
+    client.expect("Explain status colors");
+    client.send(b"a");
+    client.wait("menu toggles focus zoom", || {
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &first,
+            "#{@window_sidebar_focus_zoom}",
+        ]) == "1"
+    });
+    println!("Mouse focus: {mouse_latency:?}; native selection: {native_latency:?}");
 }
 
 #[test]
@@ -556,6 +925,9 @@ struct Client {
 }
 impl Client {
     fn attach(sandbox: &Sandbox, session: &str) -> Self {
+        Self::open(sandbox, &["attach-session", "-t", session])
+    }
+    fn open(sandbox: &Sandbox, arguments: &[&str]) -> Self {
         use std::os::{
             fd::{AsRawFd, FromRawFd},
             unix::process::CommandExt,
@@ -587,8 +959,12 @@ impl Client {
         command
             .arg("-S")
             .arg(&sandbox.socket)
-            .args(["attach-session", "-t", session])
+            .args(arguments)
             .env("TERM", "xterm-256color")
+            .env("HOME", &sandbox.root)
+            .env("AGENT_STAT_DIR", sandbox.root.join("events"))
+            .env("TMUX_SIDEBAR_STATE_DIR", sandbox.root.join("state"))
+            .current_dir(&sandbox.root)
             .env_remove("TMUX")
             .stdin(slave.try_clone().unwrap())
             .stdout(slave.try_clone().unwrap())
@@ -766,6 +1142,294 @@ impl Drop for Client {
 }
 
 #[test]
+fn inactive_windows_resize_before_selection_with_fixed_sidebars() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("static", "sleep 120");
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    let second = sandbox.tmux(&[
+        "new-window",
+        "-d",
+        "-t",
+        "static:",
+        "-P",
+        "-F",
+        "#{window_id}",
+        "sleep 120",
+    ]);
+    success(sandbox.command("static", "enable").output().unwrap());
+    let original = sandbox.tmux(&[
+        "list-panes",
+        "-s",
+        "-t",
+        "static",
+        "-F",
+        "#{pane_id}:#{pane_pid}",
+    ]);
+    let mut client = Client::attach(&sandbox, "static");
+    client.drain(Duration::from_millis(150));
+    client.resize(160);
+    client.wait("inactive windows already match the attached client", || {
+        sandbox
+            .tmux(&["list-windows", "-t", "static", "-F", "#{window_width}"])
+            .lines()
+            .all(|width| width == "160")
+    });
+    client.wait("all sidebar widths settle before selection", || {
+        sandbox
+            .tmux(&[
+                "list-panes",
+                "-s",
+                "-t",
+                "static",
+                "-F",
+                "#{@window_sidebar}:#{pane_width}",
+            ])
+            .lines()
+            .filter(|line| line.starts_with("1:"))
+            .all(|line| line == "1:28")
+    });
+    let before = sandbox.tmux(&[
+        "list-panes",
+        "-t",
+        &second,
+        "-F",
+        "#{pane_id}:#{pane_width}:#{pane_height}",
+    ]);
+    sandbox.tmux(&["select-window", "-t", &second]);
+    assert_eq!(
+        sandbox.tmux(&[
+            "list-panes",
+            "-t",
+            &second,
+            "-F",
+            "#{pane_id}:#{pane_width}:#{pane_height}"
+        ]),
+        before
+    );
+    assert_eq!(
+        sandbox.tmux(&[
+            "list-panes",
+            "-s",
+            "-t",
+            "static",
+            "-F",
+            "#{pane_id}:#{pane_pid}"
+        ]),
+        original
+    );
+}
+
+#[test]
+fn default_shell_starts_after_the_sidebar_layout_is_ready() {
+    use std::os::unix::fs::PermissionsExt;
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    let marker = sandbox.root.join("shell-size");
+    let shell = sandbox.root.join("shell");
+    fs::write(&shell, format!("#!/bin/sh\nif [ \"$1\" = -c ]; then exec /bin/sh \"$@\"; fi\nstty size > {}\nprintf 'ONE_PROMPT\\n'\nexec /bin/sh\n", quote(marker.to_str().unwrap()))).unwrap();
+    fs::set_permissions(&shell, fs::Permissions::from_mode(0o700)).unwrap();
+    let config = sandbox.root.join(".tmux.conf");
+    let previous = fs::read_to_string(&config).unwrap();
+    fs::write(
+        &config,
+        format!(
+            "set-option -g default-shell {}\n{previous}",
+            quote(shell.to_str().unwrap())
+        ),
+    )
+    .unwrap();
+    let mut client = Client::open(&sandbox, &["-f", config.to_str().unwrap()]);
+    client.expect("ONE_PROMPT");
+    wait_for_file(&marker);
+    client.wait("sidebar startup layout", || {
+        let output = Command::new("tmux")
+            .arg("-S")
+            .arg(&sandbox.socket)
+            .args(["list-panes", "-t", "0:", "-F", "#{@window_sidebar}"])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|role| role == "1")
+    });
+    assert_eq!(
+        fs::read_to_string(&marker).unwrap().trim(),
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "0:",
+            "#{pane_height} #{pane_width}"
+        ])
+    );
+    fs::remove_file(&marker).unwrap();
+    sandbox.tmux(&["new-window", "-t", "0:"]);
+    client.wait("new shell records its initial size", || {
+        fs::metadata(&marker).is_ok_and(|file| file.len() > 0)
+    });
+    assert_eq!(
+        fs::read_to_string(&marker).unwrap().trim(),
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "0:",
+            "#{pane_height} #{pane_width}"
+        ])
+    );
+    fs::remove_file(&marker).unwrap();
+    let split = sandbox.tmux(&["split-window", "-h", "-t", "0:", "-P", "-F", "#{pane_id}"]);
+    client.wait("split shell records its initial size", || {
+        fs::metadata(&marker).is_ok_and(|file| file.len() > 0)
+    });
+    client.drain(Duration::from_millis(120));
+    assert_eq!(
+        fs::read_to_string(&marker).unwrap().trim(),
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &split,
+            "#{pane_height} #{pane_width}"
+        ])
+    );
+}
+
+#[test]
+fn custom_default_command_survives_sidebar_configuration() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("custom", "sleep 120");
+    let command = "printf 'CUSTOM_COMMAND\\n'; sleep 120";
+    sandbox.tmux(&["set-option", "-g", "default-command", command]);
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    assert_eq!(
+        sandbox.tmux(&["show-option", "-gqv", "default-command"]),
+        command
+    );
+    let pane = sandbox.tmux(&["new-window", "-t", "custom:", "-P", "-F", "#{pane_id}"]);
+    let mut client = Client::attach(&sandbox, "custom");
+    client.wait("custom default command runs", || {
+        sandbox
+            .tmux(&["capture-pane", "-p", "-t", &pane])
+            .contains("CUSTOM_COMMAND")
+    });
+}
+
+#[test]
+fn plain_tmux_and_new_attached_sessions_open_one_sidebar() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    let config = sandbox.root.join(".tmux.conf");
+    let previous = fs::read_to_string(&config).unwrap();
+    fs::write(
+        &config,
+        format!("set-option -g default-shell /bin/sh\n{previous}"),
+    )
+    .unwrap();
+    let has_sidebar = |session: &str| {
+        let output = Command::new("tmux")
+            .arg("-S")
+            .arg(&sandbox.socket)
+            .args(["list-panes", "-t", session, "-F", "#{@window_sidebar}"])
+            .output()
+            .unwrap();
+        output.status.success()
+            && String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter(|role| *role == "1")
+                .count()
+                == 1
+    };
+    let mut first = Client::open(&sandbox, &["-f", config.to_str().unwrap()]);
+    first.wait("sidebar after plain tmux starts its first server", || {
+        has_sidebar("0:")
+    });
+    assert_eq!(
+        sandbox.tmux(&["display-message", "-p", "-t", "0:", "#{@window_sidebar}"]),
+        ""
+    );
+    drop(first);
+    let mut next = Client::open(&sandbox, &["new-session", "-s", "fresh", "sleep 120"]);
+    next.wait("sidebar after an attached new-session", || {
+        has_sidebar("fresh:")
+    });
+    success(sandbox.command("fresh", "toggle").output().unwrap());
+    drop(next);
+    let mut reattached = Client::attach(&sandbox, "fresh");
+    reattached.drain(Duration::from_millis(150));
+    assert_eq!(
+        sandbox.tmux(&["list-panes", "-t", "fresh:", "-F", "#{@window_sidebar}"]),
+        ""
+    );
+    assert_eq!(
+        sandbox.tmux(&[
+            "show-option",
+            "-v",
+            "-t",
+            "fresh",
+            "@window_sidebar_enabled"
+        ]),
+        "0"
+    );
+}
+
+#[test]
 fn monitor_uses_requested_session_instead_of_inherited_pane() {
     let sandbox = Sandbox::new();
     sandbox.start("requested", "sleep 120");
@@ -837,7 +1501,7 @@ fn rename_prompts_keep_names_literal() {
                 .unwrap();
             if route != "rename" {
                 client.expect("Rename window");
-                client.send(if route == "pane-menu" { b"r" } else { b"R" });
+                client.send(if route == "pane-menu" { b"p" } else { b"w" });
             }
             client.expect(if route == "window-menu" {
                 "Window name:"
@@ -1061,8 +1725,8 @@ fn native_terminal_checks_prefix_latency_new_windows_grouping_and_overlays() {
     );
     client.drain(Duration::from_millis(80));
     client.click(&sandbox, &sidebar, 9, 3, true);
-    client.expect("Full title and command");
-    client.send(b"q");
+    client.expect("View full command");
+    client.send(b"\x1b");
     client.drain(Duration::from_millis(80));
     client.resize(80);
     client.wait("rail", || {
@@ -1121,7 +1785,11 @@ fn native_terminal_checks_prefix_latency_new_windows_grouping_and_overlays() {
     client.drain(Duration::from_millis(80));
     client.send(b"\x1bOP");
     client.expect("Reset pane name");
-    client.send(b"N");
+    client.send(b"\x1b[H");
+    for _ in 0..7 {
+        client.send(b"\x1b[B");
+    }
+    client.send(b"\r");
     client.wait("manual pane label resets", || {
         sandbox
             .tmux(&[
@@ -1193,8 +1861,8 @@ fn native_recovery_preview_cancels_fast_and_reruns_only_checked_commands() {
     // This PTY has no terminal emulator to answer tmux's startup capability queries.
     client.drain(Duration::from_millis(800));
     client.send(b"\x1bOP");
-    client.expect("Recover saved sessions");
-    client.send(b"u");
+    client.expect("Recover saved work");
+    client.send(b"r");
     client.expect("RECOVERY PREVIEW");
     assert!(!marker.exists());
     for _ in 0..100 {
