@@ -1,10 +1,41 @@
-# agent-stat
+<p align="center">
+  <img src="docs/assets/agent-stat-icon.webp" width="96" height="96" alt="agent-stat icon: three terminal rows with status dots">
+</p>
 
-A macOS menu bar panel and an optional tmux sidebar that show what your Claude Code
-and Codex sessions are doing. The panel supports sessions across machines.
+<h1 align="center">agent-stat</h1>
 
-It reads their hook systems. Neither tool is modified and neither is wrapped: the hooks
-write, this app reads.
+<p align="center"><strong>Know which agent needs you.</strong></p>
+
+<p align="center">Claude Code and Codex status, in your menu bar and your terminal.</p>
+
+agent-stat shows which sessions are working, waiting for you, or finished.
+Use the macOS menu bar panel across machines, or keep the optional tmux sidebar beside your work.
+
+<table>
+  <tr>
+    <th align="left">macOS menu bar</th>
+    <th align="left">tmux sidebar</th>
+  </tr>
+  <tr>
+    <td valign="top" width="38%"><a href="docs/assets/macos-panel.png"><img src="docs/assets/macos-panel.png" width="380" alt="macOS panel with Claude Code and Codex sessions grouped under laptop and office"></a></td>
+    <td valign="top" width="62%"><a href="docs/assets/tmux-sidebar.png"><img src="docs/assets/tmux-sidebar.png" width="640" alt="tmux sidebar beside actual agent-stat test output"></a></td>
+  </tr>
+  <tr>
+    <td>See session status across machines. Click a session to return to its work.</td>
+    <td>Switch panes, search sessions, and recover conversations without leaving tmux.</td>
+  </tr>
+</table>
+
+<sub>Captures use demo session names and events. The panel uses an opaque background; the terminal image renders a tmux capture. Click either image to enlarge it.</sub>
+
+## What you get
+
+- **See what needs attention.** Status indicators distinguish work, permission requests, and finished turns.
+- **Return to the right session.** Navigate from the panel or the terminal sidebar.
+- **Use either interface.** The tmux sidebar works without the macOS app. Both read the same hook events.
+- **Share the renderer.** With `--shared`, enabled tmux windows use one renderer per server.
+
+The hooks write events and agent-stat reads them. It does not modify or wrap Claude Code or Codex.
 
 ## Build and run the macOS app
 
