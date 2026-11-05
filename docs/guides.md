@@ -113,6 +113,9 @@ It lives outside synced folders because its tab names belong to this machine.
 An optional `events` command receives remote status independently of navigation.
 See the second machine guide below.
 
+For a local tmux pane, the panel finds its attached client and selects the Ghostty tab with the same terminal identifier.
+If several tabs contain clients, the panel shows a tab picker.
+
 If a remote session reports no pane identifier, the panel uses its session title.
 It accepts an exact pane title or a title with a ` | <suffix>` ending.
 It ignores status symbols before the title, such as the Codex spinner.

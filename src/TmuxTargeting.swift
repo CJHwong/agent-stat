@@ -53,6 +53,16 @@ enum TmuxTargeting {
         [["select-window", "-t", window], ["select-pane", "-t", pane]]
     }
 
+    static func clients(pane: String) -> [String] {
+        ["list-clients", "-t", pane, "-F#{client_tty}"]
+    }
+
+    static func matchingClientTabs(in listing: String, tabs: [GhosttyTab]) -> [GhosttyTab] {
+        // Control clients have no terminal. Their empty values cannot identify a tab.
+        let terminals = Set(listing.split(separator: "\n").map(String.init))
+        return tabs.filter { !$0.tty.isEmpty && terminals.contains($0.tty) }
+    }
+
     struct PaneInfo {
         let window: String
         let attached: Bool

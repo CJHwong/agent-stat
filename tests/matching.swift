@@ -127,6 +127,23 @@ func testTTYDoesNotOverrideTmux() {
     checkEqual(pane, "%9", "the pane wins over the tty")
 }
 
+func testMatchingTmuxClientTabs() {
+    print("a local tmux client identifies its Ghostty tab")
+    let tabs = [
+        GhosttyTab(id: "local", windowId: "window", name: "tmux", cwd: "/w", tty: "/dev/ttys101"),
+        GhosttyTab(id: "remote", windowId: "window", name: "ssh peer", cwd: "/w", tty: "/dev/ttys102"),
+        GhosttyTab(id: "unknown", windowId: "window", name: "shell", cwd: "/w", tty: "")
+    ]
+    checkEqual(TmuxTargeting.matchingClientTabs(in: "/dev/ttys101\n\n", tabs: tabs).map(\.id), ["local"],
+               "the client terminal selects the local tab instead of the remote tab")
+    check(TmuxTargeting.matchingClientTabs(in: "\n", tabs: tabs).isEmpty,
+          "a control client without a terminal does not match an unknown surface")
+    checkEqual(TmuxTargeting.matchingClientTabs(in: "/dev/ttys101\n/dev/ttys102\n", tabs: tabs).count, 2,
+               "several terminal tabs remain candidates")
+    check(TmuxTargeting.matchingClientTabs(in: "/dev/ttys103\n", tabs: tabs).isEmpty,
+          "a client in another terminal app matches no Ghostty tab")
+}
+
 private func withRemoteJump(title: String = "Memory report", pane: String? = nil,
                             titles: String = "%12,Memory report | operator\n",
                             listing: String = "%12,@3,1,/w\n",

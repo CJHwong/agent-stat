@@ -17,6 +17,19 @@ var session = Session(key: SessionKey(host: "peer", id: "ram"))
 session.title = "Memory report"
 session.launchCwd = CommandLine.arguments[2]
 let routes = Routes.load(from: URL(fileURLWithPath: CommandLine.arguments[1]))
+if CommandLine.arguments.count == 5 {
+    let route = routes.route(for: "peer")!
+    let clients = Jumper.runTmux(route.argv, TmuxTargeting.clients(pane: CommandLine.arguments[3]))
+    precondition(clients.status == 0, "cannot list clients for the target pane")
+    let tabs = [
+        GhosttyTab(id: "target", windowId: "window", name: "tmux", cwd: "", tty: CommandLine.arguments[4]),
+        GhosttyTab(id: "other", windowId: "window", name: "shell", cwd: "", tty: ""),
+    ]
+    precondition(TmuxTargeting.matchingClientTabs(in: clients.output, tabs: tabs).map(\.id) == ["target"],
+                 "the real tmux client must identify its terminal tab")
+    print("PASS real tmux client identifies the terminal tab")
+    exit(0)
+}
 let outcome = Jumper.perform(Jumper.plan(for: session, routes: routes))
 print(outcome.message ?? "ok")
 """
@@ -64,6 +77,7 @@ def exercise(root, tmux):
     )
     command("select-window", "-t", other)
     master, slave = os.openpty()
+    client_terminal = os.ttyname(slave)
     environment = dict(os.environ, TERM="xterm-256color")
     environment.pop("TMUX", None)
     client = subprocess.Popen(
@@ -86,6 +100,9 @@ def exercise(root, tmux):
         assert "selected the pane" in jump()
         assert command("display-message", "-p", "-t", "probe", "#{pane_id}") == target
         print("PASS real jump selects the target window and split pane")
+        subprocess.run(
+            [str(binary), str(routes), str(root), target, client_terminal], check=True
+        )
 
         duplicate = command("split-window", "-d", "-P", "-F#{pane_id}", "-t", other)
         command("select-pane", "-t", duplicate, "-T", "Memory report")

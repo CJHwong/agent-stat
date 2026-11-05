@@ -678,6 +678,7 @@ func testRouteShellSafety() {
     let shellBreakers = " \t\n;|&$`\"'<>()*?[]!"
     var sent = TmuxTargeting.listing
     sent += TmuxTargeting.titleListing
+    sent += TmuxTargeting.clients(pane: "%12")
     sent += TmuxTargeting.selects(window: "@3", pane: "%12").flatMap { $0 }
     for argument in sent {
         check(!argument.isEmpty, "no empty argument: \(sent)")
@@ -823,6 +824,7 @@ testGroupingByMachine()
 testMatchingTabs()
 testMatchingTabsByTTY()
 testTTYDoesNotOverrideTmux()
+testMatchingTmuxClientTabs()
 testRemotePaneTitleFallback()
 testRemotePaneTitleRefusals()
 testRemotePaneSelectionErrors()

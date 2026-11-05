@@ -232,10 +232,23 @@ enum Jumper {
             return .done(message: "pane \(pane) has no tmux client")
         }
         for command in TmuxTargeting.selects(window: info.window, pane: pane) {
-            _ = run(argv[0], Array(argv.dropFirst()) + command)
+            guard runTmux(argv, command).status == 0 else {
+                return .done(message: "could not select \(command.last ?? pane)")
+            }
         }
+        return focusTmuxClient(pane: pane, argv: argv)
+    }
+
+    private static func focusTmuxClient(pane: String, argv: [String]) -> JumpOutcome {
+        let clients = runTmux(argv, TmuxTargeting.clients(pane: pane))
+        guard clients.status == 0 else {
+            return .done(message: "selected pane \(pane), could not read tmux clients")
+        }
+        let tabs = TmuxTargeting.matchingClientTabs(in: clients.output, tabs: ghosttyTabs())
+        if tabs.count > 1 { return .pick(folder: "tmux pane \(pane)", tabs: tabs) }
+        if let tab = tabs.first { return performGhostty(tab: tab) }
         activate(appNamed: "Ghostty")
-        return .done(message: nil)
+        return .done(message: "selected pane \(pane), no matching Ghostty tab")
     }
 
     static func performGhostty(tab: GhosttyTab) -> JumpOutcome {
