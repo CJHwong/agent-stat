@@ -12,7 +12,7 @@ changing the code. Keep that split.
 | `cargo clippy --locked --manifest-path tmux/Cargo.toml --all-targets -- -D warnings` | Native terminal lint checks. |
 | `cargo build --release --locked --manifest-path tmux/Cargo.toml` | Build the terminal executable. The Swift app does not require Cargo. |
 | `tmux/target/release/agent-stat-tmux install` | Preview terminal deployment without writes. |
-| `tmux/target/release/agent-stat-tmux install --apply --reload --restart` | Deploy the native terminal and replace sidebar processes. |
+| `tmux/target/release/agent-stat-tmux install --shared --apply --reload --restart` | Deploy one shared renderer per server and replace sidebar processes. |
 | `python3 -m unittest discover -s tests -p 'test_stream_events.py'` | Tests the stream helper with isolated event files. |
 | `python3 tests/stream-probe.py` | Tests the actual Swift connection with a separate local writer. |
 | `python3 tests/stream-probe.py --ssh <peer>` | Runs the same checks with isolated source files on a second machine. |
@@ -20,6 +20,7 @@ changing the code. Keep that split.
 | `python3 tests/codex-title-probe.py` | Checks name capture and renames through real Codex hooks in an isolated profile. |
 | `python3 tests/startup-probe.py` | Checks actual app startup with an isolated remote cache and saved row memory. |
 | `python3 tests/tty-match-probe.py` | Compares folder matching against tty matching, on the live sessions and the running Ghostty. Run it after changing the matching rules. |
+| `python3 tests/shared-render-probe.py --binary tmux/target/release/agent-stat-tmux` | Compare renderer memory in isolated tmux servers. |
 | `python3 tests/performance-probe.py` | Measures history reads, idle polls, and repeated name reads in isolated files. Use `--binary <path>` to save a build, then `--compare <path>` to compare it with the current code. |
 | `python3 scripts/migrate-storage.py` | Checks existing storage and profiles without changes. Requires Python 3.11 or later. |
 | `python3 install.py` | Dry run of the hook install. |
@@ -108,6 +109,9 @@ The deployed copy is what runs. Editing `hooks/` changes nothing until
 Run the installer on each machine. It deploys scripts under
 `~/.local/state/agent-stat/bin`, including `stream-events.py`.
 The terminal installer is separate. It deploys under `~/.agents/tmux/`.
+Keep `--shared` in terminal installation and upgrade commands to retain one renderer per server.
+Omitting the flag selects separate renderers.
+The shared service and input bindings live in `tmux/src/shared.rs` and `tmux/src/shared_input.rs`.
 Its recovery state stays under `~/.local/state/tmux-sidebar/`.
 Keep personal snapshots, logs, generated configuration, and backups out of the source tree.
 Synced agent settings can reference the same absolute path on each machine.

@@ -106,13 +106,17 @@ If the index is missing or unreadable, the hook still writes the event without a
 | `open .build/AgentStat.app` | Opens the built macOS app. |
 | `python3 install.py --apply` | Installs shared hooks and the stream helper on this host. |
 | `tmux/target/release/agent-stat-tmux install` | Prints the terminal installation plan without writes. |
-| `tmux/target/release/agent-stat-tmux install --apply --reload --restart` | Installs the native terminal and replaces sidebar processes. |
+| `tmux/target/release/agent-stat-tmux install --shared --apply --reload --restart` | Installs one shared renderer per tmux server; preserves running content processes. |
 | `bash scripts/test.sh` | Checks the panel, shared helpers, and terminal component, then builds the app. |
 | `AGENT_STAT_DIR` | Point the app at another events directory. |
 | `AGENT_STAT_ROUTES` | Point the app at another routes file. |
 | `AGENT_STAT_MEMORY` | Point the app at another file for what you have dealt with. |
 | `AGENT_STAT_SHOW_PANEL=1` | Show the panel at launch, instead of waiting for a click. |
-| `TMUX_SIDEBAR_STATE_DIR` | Selects another recovery directory for the terminal interface. |
+| `TMUX_SIDEBAR_STATE_DIR` | Selects another directory for terminal recovery, logs, and runtime state. |
+
+Keep `--shared` on terminal upgrades. Omitting it selects separate renderers.
+The shared socket and its locks use a private temporary directory.
+See the [terminal files reference](../tmux/docs/reference.md#files-and-environment) for that exception and the deployment flags.
 
 Tests, probes and the other development aids are in [../CLAUDE.md](../CLAUDE.md).
 

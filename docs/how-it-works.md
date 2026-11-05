@@ -11,6 +11,8 @@ The app build still compiles only `src/*.swift`.
 Its build command remains `bash build.sh`.
 
 The sidebar lives under `tmux/` and has one Rust executable with a built-in installer.
+With `--shared`, one renderer serves all enabled windows and sessions on each tmux server.
+The sidebar panes run no renderer processes of their own.
 Menus, overlays, recovery, snapshots, and shortcut detection run in Rust.
 The terminal reads the shared events without a Python helper.
 It saves conversation recovery data separately from the shared event history.

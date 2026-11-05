@@ -13,6 +13,25 @@ The status reader checks the host, process ancestry, and process start time befo
 The terminal tracks viewed responses separately from the macOS panel.
 Acknowledging attention in one interface does not acknowledge it in the other.
 
+## Why windows share a renderer
+
+With `--shared`, one service draws the sidebars for all enabled windows and sessions on a tmux server.
+Each sidebar is an empty tmux pane with no renderer process of its own.
+The service shares process scans and event reads. Each pane keeps its own selection state.
+
+Mouse and keyboard bindings send events through a private Unix socket.
+The service reuses the existing drawing code and actions.
+Menus, search, and floating views open when needed. They do not block the service.
+Recovery monitors and their control clients remain separate from the renderer.
+
+The shared service checks pane records about every 150 milliseconds and scans processes about once per second.
+It sends output only when a pane's frame changes.
+Input and layout actions restart a stopped service. Recovery monitors also check it about every ten seconds.
+
+Keep `--shared` in installation and upgrade commands.
+Omitting the flag selects a separate renderer for each window.
+See the [renderer measurements](shared-render-experiment.md) for measured memory use and comparison limits.
+
 ## Why shells start after layout preparation
 
 A shell can print its prompt before tmux finishes adding the sidebar.
@@ -44,7 +63,8 @@ Tests simulate restarts with isolated sessions; they do not reboot the host.
 A persistent control client detects the prefix key. It ignores terminal size and receives no pane output.
 It appears in `tmux list-clients` for each enabled session.
 Input handling reuses pane records and wrapped text instead of scanning processes for every key or scroll event.
-Hidden sidebars check their records every five seconds; selecting a window wakes its sidebar immediately.
+With separate renderers, inactive windows check their records every five seconds; selecting a window wakes its renderer immediately.
+The shared service uses the refresh schedule described above.
 
 ## Why an upgrade can leave empty hook files
 

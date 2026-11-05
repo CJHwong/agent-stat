@@ -153,8 +153,11 @@ Outside tmux, or for another server, also supply `--socket PATH`.
 | `~/.local/state/tmux-sidebar/snapshots/` | Private recovery snapshots. |
 | `~/.local/state/tmux-sidebar/backups/` | Installation backups. |
 | `~/.local/state/agent-stat/hosts/` | Shared status events. |
+| `/tmp/agent-stat-tmux-<user-id>/shared-<hash>.*` | Private shared socket, service identity, and locks for each server. |
 
-`AGENT_STAT_DIR` overrides the events directory. `TMUX_SIDEBAR_STATE_DIR` overrides recovery and runtime state.
+`AGENT_STAT_DIR` overrides the events directory. `TMUX_SIDEBAR_STATE_DIR` overrides recovery, logs, and other runtime state.
+The shared socket and its locks stay in the private temporary directory shown above.
+This keeps the socket path within the macOS length limit.
 Snapshots use format V1 and retain compatibility with the retired implementation. Snapshots and backups use private permissions; keep them out of Git.
 
 ## Development
@@ -175,6 +178,7 @@ The [repository test gate](../../CLAUDE.md#commands) runs Rust checks when Cargo
 |---|---|
 | [main.rs](../src/main.rs), [ui.rs](../src/ui.rs) | Dispatch, background refresh, sidebar, search, and previews. |
 | [model.rs](../src/model.rs), [events.rs](../src/events.rs) | Pane metadata, grouping, selection, and shared status. |
+| [shared.rs](../src/shared.rs), [shared_input.rs](../src/shared_input.rs) | One renderer per server, pane state, socket input, and binding fallbacks. |
 | [commands.rs](../src/commands.rs) | Exact arguments, masking, and profile capture. |
 | [actions.rs](../src/actions.rs), [focus.rs](../src/focus.rs) | Menus, layouts, editing, overlays, and zoom. |
 | [prefix.rs](../src/prefix.rs) | Control connection and shortcut sheet. |

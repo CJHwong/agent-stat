@@ -24,10 +24,12 @@ Installation enables the mouse and hides the native status bar; see [configurati
 ## 3. Install the sidebar
 
 ```sh
-tmux/target/release/agent-stat-tmux install --apply --reload --restart
+tmux/target/release/agent-stat-tmux install --shared --apply --reload --restart
 ```
 
 The installer prints a backup path and preserves running content processes.
+The `--shared` flag selects one renderer for all enabled windows and sessions on this tmux server.
+Keep the flag when you upgrade.
 
 ## 4. Open a session and split a pane
 

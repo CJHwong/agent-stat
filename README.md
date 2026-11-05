@@ -46,6 +46,7 @@ It provides a persistent sidebar, colored status indicators, search, and convers
 It works without the macOS panel running and adds no duplicate status hooks.
 
 The terminal component is a Rust binary with no Python runtime dependency.
+Use `--shared` when installing or upgrading it to share one renderer across each tmux server.
 Follow [your first sidebar session](tmux/docs/tutorial.md) to build, install, and try it.
 Shared hooks are optional when you do not need agent status dots.
 

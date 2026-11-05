@@ -17,14 +17,14 @@ From the updated repository root, run:
 
 ```sh
 cargo build --release --locked --manifest-path tmux/Cargo.toml
-tmux/target/release/agent-stat-tmux install --apply --reload --restart
+tmux/target/release/agent-stat-tmux install --shared --apply --reload --restart
 ```
 
 The installer replaces sidebar processes and monitors while preserving content panes and their processes.
 It prints the backup path. See the [installer flags](reference.md#installer-flags) for other deployment options.
 
-To share one renderer across all windows, add `--shared` to the installer command.
-Keep that flag on later upgrades. Omit it to return to separate renderers.
+The command keeps one shared renderer for all enabled windows and sessions.
+Keep `--shared` on later upgrades. Omit it to return to separate renderers.
 See the [shared renderer](shared-render-experiment.md) for memory measurements and restart behavior.
 
 ## Install on another machine
@@ -35,7 +35,7 @@ See the [shared renderer](shared-render-experiment.md) for memory measurements a
 4. Start tmux there and check that the sidebar appears.
 
 An existing binary must match the destination's operating system and architecture.
-Settings sync does not install the executable. Each sidebar reads that machine's local events.
+Settings sync does not install the executable. The renderer reads that machine's local events.
 
 ## Show a missing sidebar
 
