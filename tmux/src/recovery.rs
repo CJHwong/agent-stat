@@ -322,7 +322,9 @@ pub fn monitor(options: &Options) -> io::Result<()> {
             rt::log(&format!("Recovery availability: {error}"));
         }
         let next = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < next && running() && rt::exists(options) {
+        // The control client detects session closure. Poll only after its observer exits.
+        while Instant::now() < next && running() && (!observer.is_finished() || rt::exists(options))
+        {
             thread::sleep(Duration::from_millis(100));
         }
     }

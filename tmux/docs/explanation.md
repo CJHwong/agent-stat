@@ -25,8 +25,12 @@ Menus, search, and floating views open when needed. They do not block the servic
 Recovery monitors and their control clients remain separate from the renderer.
 
 The shared service checks pane records about every 150 milliseconds and scans processes about once per second.
+It reads process ancestry globally, then reads command details only for content processes and their descendants.
+It shares unchanged session rows and skips frame construction until rows or pane dimensions change.
 It sends output only when a pane's frame changes.
+Left clicks check current pane dimensions because layout hooks can resize a pane between refreshes.
 Input and layout actions restart a stopped service. Recovery monitors also check it about every ten seconds.
+Monitors use their control connections to detect session closure. If an observer stops, its monitor resumes polling.
 
 Keep `--shared` in installation and upgrade commands.
 Omitting the flag selects a separate renderer for each window.

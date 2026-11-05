@@ -1,6 +1,12 @@
 use regex::Regex;
 use serde::Serialize;
-use std::{collections::HashMap, io, path::Path, process::Command, sync::LazyLock};
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+    path::Path,
+    process::Command,
+    sync::LazyLock,
+};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Entry {
@@ -56,8 +62,12 @@ pub fn processes() -> io::Result<HashMap<u32, Process>> {
     if !output.status.success() {
         return Err(io::Error::other("Cannot read process list"));
     }
+    Ok(parse_processes(&String::from_utf8_lossy(&output.stdout)))
+}
+
+fn parse_processes(text: &str) -> HashMap<u32, Process> {
     let mut result = HashMap::new();
-    for line in String::from_utf8_lossy(&output.stdout).lines() {
+    for line in text.lines() {
         let fields: Vec<_> = line.split_whitespace().collect();
         if fields.len() < 10 {
             continue;
@@ -74,7 +84,68 @@ pub fn processes() -> io::Result<HashMap<u32, Process>> {
             },
         );
     }
-    Ok(result)
+    result
+}
+
+fn descendant_pids(parents: &HashMap<u32, u32>, roots: &HashSet<u32>) -> HashSet<u32> {
+    let mut children = HashMap::<u32, Vec<u32>>::new();
+    for (pid, parent) in parents {
+        children.entry(*parent).or_default().push(*pid);
+    }
+    let mut selected = HashSet::new();
+    let mut pending = roots.iter().copied().collect::<Vec<_>>();
+    while let Some(pid) = pending.pop() {
+        if !selected.insert(pid) {
+            continue;
+        }
+        if let Some(descendants) = children.get(&pid) {
+            pending.extend(descendants);
+        }
+    }
+    selected
+}
+
+pub fn processes_for_roots(roots: &HashSet<u32>) -> io::Result<HashMap<u32, Process>> {
+    if roots.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let output = Command::new("/bin/ps")
+        .args(["-axo", "pid=,ppid="])
+        .output()?;
+    if !output.status.success() {
+        return Err(io::Error::other("Cannot read process ancestry"));
+    }
+    let parents = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            Some((fields.next()?.parse().ok()?, fields.next()?.parse().ok()?))
+        })
+        .collect::<HashMap<u32, u32>>();
+    let mut selected = descendant_pids(&parents, roots)
+        .into_iter()
+        .collect::<Vec<_>>();
+    selected.sort_unstable();
+    let identifiers = selected
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let output = Command::new("/bin/ps")
+        .args([
+            "-p",
+            &identifiers,
+            "-o",
+            "pid=,ppid=,pgid=,tpgid=,lstart=,command=",
+        ])
+        .output()?;
+    // Every selected process can exit between the ancestry scan and the detailed query.
+    let all_exited =
+        output.status.code() == Some(1) && output.stdout.is_empty() && output.stderr.is_empty();
+    if !(output.status.success() || all_exited) {
+        return Err(io::Error::other("Cannot read pane process details"));
+    }
+    Ok(parse_processes(&String::from_utf8_lossy(&output.stdout)))
 }
 
 pub fn belongs(pid: u32, root: u32, processes: &HashMap<u32, Process>) -> bool {
@@ -264,6 +335,9 @@ pub fn grouped(entries: Vec<Entry>) -> Vec<Entry> {
 }
 
 pub fn matches(entry: &Entry, query: &str) -> bool {
+    if query.trim().is_empty() {
+        return true;
+    }
     let haystack = format!(
         "{} {} {} {}",
         entry.index, entry.title, entry.folder, entry.command
@@ -294,6 +368,48 @@ pub fn select(socket: &str, entry: &Entry) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn descendant_selection_keeps_roots_and_children_without_cycles() {
+        let parents = HashMap::from([(10, 1), (11, 10), (12, 11), (20, 1), (30, 31), (31, 30)]);
+        let selected = descendant_pids(&parents, &std::collections::HashSet::from([10, 30]));
+        assert_eq!(
+            selected,
+            std::collections::HashSet::from([10, 11, 12, 30, 31])
+        );
+        assert!(descendant_pids(&parents, &std::collections::HashSet::new()).is_empty());
+    }
+
+    #[test]
+    fn targeted_process_scan_keeps_process_identity_and_ancestry() {
+        let mut child = Command::new("/bin/sleep").arg("5").spawn().unwrap();
+        let root = std::process::id();
+        let selected = processes_for_roots(&std::collections::HashSet::from([root]));
+        child.kill().unwrap();
+        child.wait().unwrap();
+        let selected = selected.unwrap();
+        assert!(belongs(child.id(), root, &selected));
+        assert!(!selected[&root].started.is_empty());
+        assert!(!selected[&root].command.is_empty());
+        assert_eq!(selected[&root].started, processes().unwrap()[&root].started);
+        assert!(
+            processes_for_roots(&std::collections::HashSet::new())
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn empty_and_whitespace_queries_match_all_titles() {
+        let entry = Entry {
+            title: "台灣 UTF8".into(),
+            ..Entry::default()
+        };
+        for query in ["", " ", "\t\n", "\u{2003}"] {
+            assert!(matches(&entry, query));
+        }
+        assert!(matches(&entry, "utf8"));
+        assert!(!matches(&entry, "different"));
+    }
     #[test]
     fn redacts_credentials_and_control_sequences() {
         assert_eq!(

@@ -63,6 +63,8 @@ It also checks new windows, two attached sessions, service restart, upgrade, rol
 The control tests include a monitor that inherits `TMUX` and `TMUX_PANE` from a hook.
 The shortcut observer clears those variables before it attaches to the requested session.
 A real terminal check passed mouse selection and keyboard navigation on the office server, which runs tmux 3.7c.
+After the resize fix, real terminal checks passed eight consecutive times on both office and Avery.
+Each check covered a new session, shortcut help, a new window, narrow expansion, and Escape.
 
 The shared renderer polls at 150 milliseconds. Inactive production renderers poll at five seconds.
 The rename probe waits for every sidebar. Its delay is not a comparison of equal refresh schedules.
@@ -86,3 +88,40 @@ The empty event storage does not represent a full day of live agent events.
 
 The probe creates separate servers and removes them after each case.
 It does not install the executable or change the live tmux configuration.
+
+## Processor improvements
+
+A local comparison on November 5, 2026 used the complete renderer and recovery monitor.
+Each case used empty event storage and sleeping content processes.
+Both versions retained the 150-millisecond refresh schedule and one-second process scan schedule.
+
+| Windows | Previous tmux launches/second | Current tmux launches/second | Previous worker processor use | Current worker processor use |
+|---|---:|---:|---:|---:|
+| 8 | 21.40 | 12.59 | 30.55% | 24.08% |
+| 32 | 23.29 | 14.89 | 35.76% | 29.06% |
+
+The launch counts cover a ten-second idle interval after drawing checks and a two-second warmup.
+Worker processor use includes the renderer, monitor, and their reaped child processes.
+It covers their full lifetimes, including startup, drawing checks, warmup, and shutdown.
+These percentages use one processor core as 100%. They are not pure idle measurements.
+The tmux server uses another 1.7% versus 1.8% with eight windows, and 3.1% versus 3.4% with 32 windows.
+The comparison shows lower worker costs, without evidence of lower server costs.
+System load and process count affect these values.
+
+The monitor now detects session closure through its existing control connection instead of repeated `has-session` subprocesses.
+If the observer stops, the monitor resumes polling.
+The renderer reads process ancestry globally, then reads command details only for content processes and their descendants.
+It retains process start times and the existing status checks.
+Unchanged session rows share storage. Unchanged rows and pane dimensions skip frame construction.
+Empty search queries also skip text allocation and case conversion.
+Left clicks check current pane dimensions to avoid stale widths during layout changes.
+This adds one tmux query per left click. It adds no idle queries.
+
+Save the previous release executable before rebuilding, then run:
+
+```sh
+python3 tests/shared-performance-probe.py --binary tmux/target/release/agent-stat-tmux --baseline /tmp/agent-stat-previous --windows 8 32 --seconds 10
+```
+
+The probe checks titles, renames, the narrow arrow, and resized content before each sample.
+It uses private servers and leaves the installed version unchanged.

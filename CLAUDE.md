@@ -21,6 +21,7 @@ changing the code. Keep that split.
 | `python3 tests/startup-probe.py` | Checks actual app startup with an isolated remote cache and saved row memory. |
 | `python3 tests/tty-match-probe.py` | Compares folder matching against tty matching, on the live sessions and the running Ghostty. Run it after changing the matching rules. |
 | `python3 tests/shared-render-probe.py --binary tmux/target/release/agent-stat-tmux` | Compare renderer memory in isolated tmux servers. |
+| `python3 tests/shared-performance-probe.py --binary tmux/target/release/agent-stat-tmux --baseline <saved-binary>` | Compare shared renderer processor use and tmux launches in isolated servers. |
 | `python3 tests/performance-probe.py` | Measures history reads, idle polls, and repeated name reads in isolated files. Use `--binary <path>` to save a build, then `--compare <path>` to compare it with the current code. |
 | `python3 scripts/migrate-storage.py` | Checks existing storage and profiles without changes. Requires Python 3.11 or later. |
 | `python3 install.py` | Dry run of the hook install. |

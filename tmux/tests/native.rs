@@ -2341,3 +2341,120 @@ fn monitor_preserves_reboot_snapshots_and_records_deliberate_closures() {
     unsafe { libc::kill(fresh.id() as i32, libc::SIGTERM) };
     fresh.wait().unwrap();
 }
+
+#[test]
+fn monitor_uses_control_connection_instead_of_idle_process_polls() {
+    monitor_polling(true);
+}
+
+#[test]
+fn monitor_retains_polling_if_the_control_observer_fails() {
+    monitor_polling(false);
+}
+
+fn monitor_polling(control: bool) {
+    use std::os::unix::fs::PermissionsExt;
+    let sandbox = Sandbox::new();
+    sandbox.start("monitor", "sleep 120");
+    let real_tmux = success(Command::new("which").arg("tmux").output().unwrap());
+    let bin = sandbox.root.join("bin");
+    fs::create_dir(&bin).unwrap();
+    let log = sandbox.root.join("polls");
+    fs::write(&log, "").unwrap();
+    let wrapper = bin.join("tmux");
+    let fail_control = if control {
+        ""
+    } else {
+        "if [ \"$3\" = -C ]; then exit 1; fi\n"
+    };
+    fs::write(&wrapper, format!("#!/bin/sh\n{fail_control}if [ \"$3\" = has-session ]; then printf 'poll\\n' >> {}; fi\nexec {} \"$@\"\n", quote(log.to_str().unwrap()), quote(&real_tmux))).unwrap();
+    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut monitor = sandbox
+        .command("monitor", "monitor")
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .spawn()
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(500));
+    fs::write(&log, "").unwrap();
+    std::thread::sleep(Duration::from_millis(1200));
+    let polls = fs::read_to_string(&log).unwrap().lines().count();
+    if control {
+        assert!(polls <= 3, "Idle process polls: {polls}");
+    } else {
+        assert!(polls >= 3, "Missing fallback polls: {polls}");
+    }
+    sandbox.tmux(&["kill-session", "-t", "monitor"]);
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while monitor.try_wait().unwrap().is_none() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Monitor did not exit after session closure"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn targeted_shared_scans_keep_status_identity_and_refresh_attention() {
+    let sandbox = Sandbox::new();
+    sandbox.start("status", "sleep 120");
+    sandbox.tmux(&["set-option", "-g", "@window_sidebar_shared", "1"]);
+    let pane = sandbox.tmux(&["display-message", "-p", "-t", "status:", "#{pane_id}"]);
+    let pid: u32 = sandbox
+        .tmux(&["display-message", "-p", "-t", &pane, "#{pane_pid}"])
+        .parse()
+        .unwrap();
+    let started = success(
+        Command::new("/bin/ps")
+            .args(["-p", &pid.to_string(), "-o", "lstart="])
+            .output()
+            .unwrap(),
+    );
+    let path = event_file(&sandbox);
+    append_event(
+        &path,
+        serde_json::json!({"event":"SessionStart","session":"identity","agent":"claude","agent_pid":pid,"agent_start":started,"tmux":pane,"ts":1}),
+    );
+    success(sandbox.command("status", "enable").output().unwrap());
+    let sidebar = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        &pane,
+        "#{@window_sidebar_pane}",
+    ]);
+    let mut client = Client::attach(&sandbox, "status");
+    client.wait("targeted scan decorates the real process", || {
+        sandbox
+            .tmux(&["capture-pane", "-p", "-t", &sidebar])
+            .contains('●')
+    });
+    append_event(
+        &path,
+        serde_json::json!({"event":"SessionStart","session":"identity","agent_pid":pid,"agent_start":"wrong identity","tmux":pane,"ts":2}),
+    );
+    client.wait("a stale process identity loses its status", || {
+        !sandbox
+            .tmux(&["capture-pane", "-p", "-t", &sidebar])
+            .contains('●')
+    });
+    sandbox.tmux(&["new-window", "-t", "status:", "sleep 120"]);
+    append_event(
+        &path,
+        serde_json::json!({"event":"PermissionRequest","session":"identity","agent_pid":pid,"agent_start":started,"tmux":pane,"ts":3}),
+    );
+    client.wait("changed attention redraws an existing shared frame", || {
+        sandbox
+            .tmux(&["capture-pane", "-p", "-t", &sidebar])
+            .contains('*')
+    });
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &pane, "sleep 120"]);
+    client.wait("an exited process loses its status", || {
+        !sandbox
+            .tmux(&["capture-pane", "-p", "-t", &sidebar])
+            .contains('●')
+    });
+}
