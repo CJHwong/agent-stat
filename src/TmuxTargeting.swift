@@ -19,7 +19,7 @@ enum TmuxTargeting {
     /// watching moves nothing you can see.
     static let listing = [
         "list-panes", "-a",
-        "-F#{pane_id},#{window_id},#{session_attached},#{pane_current_path}"
+        "-F#{pane_id},#{window_id},#{session_attached},#{session_id},tty=#{pane_tty},#{pane_current_path}"
     ]
 
     // Keep titles separate because titles and paths can both contain commas.
@@ -49,36 +49,59 @@ enum TmuxTargeting {
     ///
     /// Both halves are needed: selecting a window does not move the pane inside
     /// it, which was measured and not assumed.
-    static func selects(window: String, pane: String) -> [[String]] {
-        [["select-window", "-t", window], ["select-pane", "-t", pane]]
+    static func selects(window: String, pane: String, session: String? = nil) -> [[String]] {
+        let target = session.map { $0 + ":" + window } ?? window
+        return [["select-window", "-t", target], ["select-pane", "-t", pane]]
     }
 
-    static func clients(pane: String) -> [String] {
-        ["list-clients", "-t", pane, "-F#{client_tty}"]
+    static let windowSelected = "agent-stat-window-selected"
+
+    static func selection(window: String, pane: String, session: String? = nil) -> [String] {
+        let commands = selects(window: window, pane: pane, session: session)
+        // tmux stops the command queue on error. The marker identifies which selection failed.
+        return commands[0] + [";", "display-message", "-p", windowSelected, ";"] + commands[1]
+    }
+
+    static func clients(pane: String, session: String? = nil) -> [String] {
+        ["list-clients", "-t", session ?? pane, "-F#{client_tty}"]
     }
 
     static func matchingClientTabs(in listing: String, tabs: [GhosttyTab]) -> [GhosttyTab] {
         // Control clients have no terminal. Their empty values cannot identify a tab.
         let terminals = Set(listing.split(separator: "\n").map(String.init))
-        return tabs.filter { !$0.tty.isEmpty && terminals.contains($0.tty) }
+        var seen = Set<String>()
+        return tabs.filter {
+            !$0.tty.isEmpty && terminals.contains($0.tty)
+                && seen.insert($0.windowId + ":" + $0.id).inserted
+        }
     }
 
     struct PaneInfo {
         let window: String
         let attached: Bool
         let path: String
+        var session: String?
+        var tty: String?
     }
 
     /// The window that holds this pane, whether a client shows its session, and the
     /// folder the pane sits in. The path is last, so a comma inside it survives.
     static func paneInfo(_ pane: String, in listing: String) -> PaneInfo? {
-        guard let line = listing
-            .split(separator: "\n")
-            .first(where: { $0.hasPrefix(pane + ",") }) else { return nil }
-        let fields = line.split(separator: ",", maxSplits: 3)
-        guard fields.count >= 4 else { return nil }
-        return PaneInfo(window: String(fields[1]), attached: (Int(fields[2]) ?? 0) > 0,
-                        path: String(fields[3]))
+        let matches = listing.split(separator: "\n").compactMap { line -> PaneInfo? in
+            guard line.hasPrefix(pane + ",") else { return nil }
+            let fields = line.split(separator: ",", maxSplits: 3, omittingEmptySubsequences: false)
+            guard fields.count == 4 else { return nil }
+            let remainder = String(fields[3])
+            let separator = remainder.hasPrefix("$") ? remainder.firstIndex(of: ",") : nil
+            let session = separator.map { String(remainder[..<$0]) }
+            let tail = separator.map { String(remainder[remainder.index(after: $0)...]) } ?? remainder
+            let terminalEnd = tail.hasPrefix("tty=") ? tail.firstIndex(of: ",") : nil
+            let tty = terminalEnd.map { String(tail[tail.index(tail.startIndex, offsetBy: 4)..<$0]) }
+            let path = terminalEnd.map { String(tail[tail.index(after: $0)...]) } ?? tail
+            return PaneInfo(window: String(fields[1]), attached: (Int(fields[2]) ?? 0) > 0,
+                            path: path, session: session, tty: tty)
+        }
+        return matches.first(where: \.attached) ?? matches.first
     }
 
     /// Why a click cannot pick this session's pane: several visible sessions on the
@@ -87,11 +110,15 @@ enum TmuxTargeting {
     /// sharer: it inherited the pane from the process that started it, which is the
     /// replay case.
     static func sharedPaneRefusal(for session: Session, among visible: [Session]) -> String? {
-        guard let host = session.onAnotherMachine,
-              let pane = session.tmuxPane, !pane.isEmpty else { return nil }
+        guard let pane = session.tmuxPane, !pane.isEmpty else { return nil }
+        let host = session.key.host
         let folder = session.launchCwd.isEmpty ? session.cwd : session.launchCwd
         let sharing = visible.filter { other in
-            guard other.onAnotherMachine == host, other.tmuxPane == pane else { return false }
+            guard other.key.host == host, other.tmuxPane == pane else { return false }
+            guard other.alive != false, other.state != .ended else { return false }
+            if let socket = session.tmuxSocket, let otherSocket = other.tmuxSocket, socket != otherSocket {
+                return false
+            }
             let otherFolder = other.launchCwd.isEmpty ? other.cwd : other.launchCwd
             return samePath(folder, otherFolder)
         }.count
@@ -115,11 +142,12 @@ enum TmuxTargeting {
     /// the folder its terminal tab sits in, so the walk allows eight parents. The home
     /// directory still ends it. Unknown paths never block: a missing value is not
     /// evidence of a mismatch.
-    static func folderMatches(_ sessionFolder: String, _ panePath: String) -> Bool {
+    static func folderMatches(_ sessionFolder: String, _ panePath: String,
+                              resolveSymlinks: Bool = true) -> Bool {
         guard !sessionFolder.isEmpty, !panePath.isEmpty else { return true }
         var candidate = sessionFolder
         for _ in 0..<8 {
-            if samePath(candidate, panePath) { return true }
+            if resolveSymlinks ? samePath(candidate, panePath) : candidate == panePath { return true }
             if candidate.isEmpty || candidate == "/" { break }
             candidate = (candidate as NSString).deletingLastPathComponent
         }

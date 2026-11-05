@@ -8,6 +8,7 @@ changing the code. Keep that split.
 | Command | What it does |
 |---|---|
 | `bash scripts/test.sh` | The unit tests, then the app build. Run it before you claim anything. |
+| `python3 tests/ghostty-jump-probe.py` | Check split focus, stale choices, and a verified local tmux jump in temporary Ghostty windows. |
 | `cargo test --locked --manifest-path tmux/Cargo.toml -- --test-threads=2` | Native terminal checks, including recovery and real pseudo terminal input. Requires tmux. |
 | `cargo clippy --locked --manifest-path tmux/Cargo.toml --all-targets -- -D warnings` | Native terminal lint checks. |
 | `cargo build --release --locked --manifest-path tmux/Cargo.toml` | Build the terminal executable. The Swift app does not require Cargo. |

@@ -27,6 +27,7 @@ struct Record: Decodable {
     /// Terminal identity, captured from the environment the agent inherited.
     let term: String?
     let tmux: String?
+    let tmuxSocket: String?
     /// The pty the agent runs on, as `/dev/ttysNNN`. Written once, on
     /// `SessionStart`, because the process keeps its controlling terminal. Absent
     /// in records that predate it, and absent when the process has no tty.
@@ -39,6 +40,7 @@ struct Record: Decodable {
     enum CodingKeys: String, CodingKey {
         case event, source, agent, session, cwd, turn, model, title, tool, message, term, tmux
         case tty
+        case tmuxSocket = "tmux_socket"
         case timestamp = "ts"
         case agentPid = "agent_pid"
         case agentStart = "agent_start"

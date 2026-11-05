@@ -120,7 +120,7 @@ func testTTYDoesNotOverrideTmux() {
     local.isLocal = true
     local.tmuxPane = "%9"
     local.tty = "/dev/ttys009"
-    guard case .tmux(let pane) = Jumper.plan(for: local, routes: .none) else {
+    guard case .tmux(let pane, _) = Jumper.plan(for: local, routes: .none) else {
         check(false, "a local session with a tty still plans its pane")
         return
     }
@@ -157,8 +157,19 @@ private func withRemoteJump(title: String = "Memory report", pane: String? = nil
         case "$*" in
             *pane_title*) cat titles ;;
             list-panes*) cat listing ;;
-            *) printf '%s\\n' "$*" >> selected
-               if [ "$1" = "$(cat failure)" ]; then exit 1; fi ;;
+            run-shell*) exit 1 ;;
+            *) while [ "$#" -gt 0 ]; do
+                   case "$1" in
+                       select-window|select-pane)
+                           command="$1"
+                           printf '%s %s %s\\n' "$1" "$2" "$3" >> selected
+                           shift 3
+                           if [ "$command" = "$(cat failure)" ]; then exit 1; fi ;;
+                       display-message) printf '%s\\n' "$3"; shift 3 ;;
+                       ';') shift ;;
+                       *) exit 1 ;;
+                   esac
+               done ;;
         esac
         """.write(to: script, atomically: true, encoding: .utf8)
         try titles.write(to: directory.appendingPathComponent("titles"), atomically: true, encoding: .utf8)
@@ -195,7 +206,8 @@ func testRemotePaneTitleFallback() {
 
 func testRemotePaneTitleRefusals() {
     print("a title fallback refuses uncertain targets")
-    withRemoteJump(titles: "%12,Memory report | operator\n%13,Memory report\n") { outcome, selected in
+    withRemoteJump(titles: "%12,Memory report | operator\n%13,Memory report\n",
+                   listing: "%12,@3,1,/w\n%13,@4,1,/w\n") { outcome, selected in
         check(outcome.message?.contains("multiple panes") == true, "duplicate titles report ambiguity")
         checkEqual(selected, "", "duplicate titles select nothing")
     }
@@ -210,6 +222,14 @@ func testRemotePaneTitleRefusals() {
     withRemoteJump(listing: "%12,@3,1,/other\n") { outcome, selected in
         check(outcome.message?.contains("different folder") == true, "a match in another folder stays refused")
         checkEqual(selected, "", "another folder selects nothing")
+    }
+    withRemoteJump(title: "") { outcome, selected in
+        check(outcome.message?.contains("no tmux pane") == true, "missing metadata reports an unavailable target")
+        checkEqual(selected, "", "missing metadata does not claim a selection")
+    }
+    withRemoteJump(titles: "%12,Memory report\n%13,Memory report\n",
+                   listing: "%12,@3,1,/w\n%13,@4,1,/other\n") { _, selected in
+        check(selected.contains("select-pane -t %12"), "folder evidence narrows duplicate title matches")
     }
 }
 

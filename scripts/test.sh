@@ -92,6 +92,7 @@ swiftc -o "$BIN" \
     "$HERE/tests/main.swift" \
     "$HERE/tests/watcher.swift" \
     "$HERE/tests/matching.swift" \
+    "$HERE/tests/navigation.swift" \
     "$HERE/tests/icon.swift" \
     "$HERE/tests/failure.swift" \
     "$HERE/tests/transport.swift" \
@@ -115,13 +116,17 @@ swiftc -o "$BIN" \
     "$HERE/src/LoginItem.swift" \
     "$HERE/src/PanelMemory.swift" \
     "$HERE/src/Jump.swift" \
+    "$HERE/src/CommandRunner.swift" \
     "$HERE/src/JumpRemote.swift" \
+    "$HERE/src/JumpLocal.swift" \
+    "$HERE/src/JumpQueue.swift" \
     "$HERE/src/TmuxTargeting.swift" \
     "$HERE/src/Paths.swift" \
     "$HERE/src/RemoteCache.swift"
 
 "$BIN"
 python3 "$HERE/tests/tmux-jump-probe.py"
+python3 "$HERE/tests/navigation-actions-probe.py"
 python3 -m unittest discover -s "$HERE/tests" -p 'test_*.py'
 python3 "$HERE/tests/stream-lifecycle-probe.py" --quick
 if command -v cargo >/dev/null 2>&1; then

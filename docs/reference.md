@@ -11,7 +11,7 @@ that need you sort to the top.
 | State | Means |
 |---|---|
 | red | the session is waiting on you: a turn finished, or a permission prompt is open, and nothing is running under it |
-| blue | ready before work starts or resumes, or a waiting row you already clicked |
+| blue | ready before work starts or resumes, or a waiting row reached by a successful jump |
 | orange | the turn failed. It also needs you and counts in the badge |
 | purple | you interrupted it |
 | green | working, with the running tool and its elapsed time. The dot pulses |
@@ -19,8 +19,9 @@ that need you sort to the top.
 
 Red carries one meaning and no other, so a glance down the panel finds every row that
 wants you. Orange is the second colour that needs you: a failure counts in the badge and
-stays for up to 12 hours, or until you click it or hide it. Clicking it stops the count but does not turn it
-blue, so the row still says the turn failed. Work in flight counts whoever is doing it: a
+stays for up to 12 hours, or until a successful jump or dismissal.
+A successful jump stops the count but keeps the orange dot.
+The row still says the turn failed. Work in flight counts whoever is doing it: a
 turn that finished while its subagents run on stays green, keeps pulsing, and stays out
 of the badge until its last subagent stops. A session that vanished without an end record
 is waiting on nobody, so it takes the same grey as a clean end and stays out of the count.
@@ -58,6 +59,8 @@ One JSON record per line, one file per host per day:
 
 `ts` and `event` are the only fields a row needs. Other fields are optional.
 An older build on another machine can write a smaller record.
+The optional `tmux_socket` field identifies the server that owns a pane.
+New processes replace old terminal, pane, and socket metadata.
 The reader skips a record that cannot decode and continues with the file.
 The file name carries the host, because only that machine writes it.
 
@@ -92,7 +95,7 @@ If the index is missing or unreadable, the hook still writes the event without a
 | `~/.local/state/agent-stat/hosts/<host>-<date>.jsonl` | Local events, one writer per file per day. |
 | `~/.local/state/agent-stat/remote/<host>/hosts/` | The receiver's cache of that remote host's events. |
 | `~/.config/agent-stat/routes.json` | Optional routes to other machines. |
-| `~/.config/agent-stat/memory.json` | The rows you have hidden and the rows you have clicked. A restart keeps both. |
+| `~/.config/agent-stat/memory.json` | Hidden rows and successful navigation acknowledgements. A restart keeps both. |
 | `~/Library/Logs/agent-stat.log` | Startup lines, and why a click failed. |
 | `~/.agents/tmux/agent-stat-tmux` | The native terminal executable and installer. |
 | `~/.config/tmux/window-sidebar.conf` | Generated terminal configuration and bindings. |

@@ -12,6 +12,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     let model = PanelModel()
+    var navigation: (queue: JumpQueue, receipt: SessionStore.AttentionReceipt?) = (JumpQueue(), nil)
     private var panel: NSPanel?
     private var hosting: NSHostingController<PanelView>?
     private var effectView: NSVisualEffectView?
@@ -389,7 +390,6 @@ extension AppDelegate {
 
 MainActor.assumeIsolated {
     let arguments = CommandLine.arguments
-
     if DevFlags.run(arguments) { return }
 
     let app = NSApplication.shared

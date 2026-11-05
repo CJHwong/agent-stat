@@ -139,7 +139,7 @@ struct PanelView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 9)
                 .padding(.bottom, 5)
-            ForEach(picker.tabs) { tab in
+            ForEach(picker.tabs, id: \.selectionID) { tab in
                 Button {
                     model.onPick?(tab)
                 } label: {
@@ -147,7 +147,7 @@ struct PanelView: View {
                         Image(systemName: "macwindow")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
-                        Text(tab.name)
+                        Text(tab.pickerName(in: picker.tabs))
                             .font(.system(size: 11.5))
                             .lineLimit(1)
                         Spacer(minLength: 4)

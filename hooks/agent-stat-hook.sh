@@ -45,6 +45,11 @@ hosts="$dir/hosts"
 # fallback covers a hand run of this script, where PPID is right anyway.
 agent_pid=${AGENT_HOOK_AGENT_PID:-$PPID}
 
+# TMUX ends with the server pid and session index. The socket can contain commas.
+tmux_socket=${TMUX-}
+tmux_socket=${tmux_socket%,*}
+tmux_socket=${tmux_socket%,*}
+
 # Print an empty decision and leave. Every failure path ends here.
 emit_empty() {
     printf '{}\n'
@@ -135,6 +140,7 @@ make_record() {
     --arg start "$start" \
     --arg term "${TERM_PROGRAM-}" \
     --arg tmux "${TMUX_PANE-}" \
+    --arg tmux_socket "$tmux_socket" \
     --arg tty "$tty" '
     def codex_title($session):
         reduce ($names | split("\n")[] | fromjson?
@@ -155,6 +161,7 @@ make_record() {
         agent_start: (if $start == "null" then null else $start end),
         term: (if $term == "" then null else $term end),
         tmux: (if $tmux == "" then null else $tmux end),
+        tmux_socket: (if $tmux_socket == "" then null else $tmux_socket end),
         tty: (if $tty == "" then null else $tty end),
         event: (.hook_event_name // "unknown"),
         source: (.source // null),

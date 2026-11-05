@@ -32,8 +32,10 @@ if let index = arguments.firstIndex(of: "--plan-jump") {
     session.tty = tty.hasPrefix("/") ? tty : ""
     session.isLocal = true
     switch Jumper.plan(for: session) {
-    case .tmux(let pane):
-        print("plan: tmux pane \(pane)")
+    case .tmux(let pane, _):
+        print("plan: tmux pane \(pane ?? "title lookup")")
+    case .unavailable(let message):
+        print("plan: unavailable, \(message)")
     case .ghostty(_, let tabs) where tabs.isEmpty:
         print("plan: no tab found for \(session.launchCwd) or its parents")
     case .ghostty(let folder, let tabs):
@@ -43,7 +45,7 @@ if let index = arguments.firstIndex(of: "--plan-jump") {
         print("plan: raise \(name)")
     case .remote(let host):
         print("plan: refuse, that session is on \(host)")
-    case .route(let host, let route, let pane, _, _):
+    case .route(let host, let route, let pane, _, _, _):
         print("plan: on \(host) via \(route.argv.joined(separator: " ")), pane \(pane ?? "-")")
     }
     exit(0)

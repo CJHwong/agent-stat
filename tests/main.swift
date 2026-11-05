@@ -634,7 +634,7 @@ func testRoutePlanning() {
     // A remote session with a route plans to select there; without one it is
     // refused, which is still the default.
     let routed = Jumper.plan(for: routedSession, routes: routes)
-    guard case .route(let host, _, let pane, _, _) = routed else {
+    guard case .route(let host, _, let pane, _, _, _) = routed else {
         check(false, "a routed remote session plans a route")
         return
     }
@@ -653,7 +653,7 @@ func testRoutePlanning() {
     var local = Session(key: SessionKey(host: HOST, id: "l"))
     local.isLocal = true
     local.tmuxPane = "%9"
-    guard case .tmux(let localPane) = Jumper.plan(for: local, routes: routes) else {
+    guard case .tmux(let localPane, _) = Jumper.plan(for: local, routes: routes) else {
         check(false, "a local session still plans a local jump")
         return
     }
@@ -825,6 +825,17 @@ testMatchingTabs()
 testMatchingTabsByTTY()
 testTTYDoesNotOverrideTmux()
 testMatchingTmuxClientTabs()
+testNavigationMetadata()
+testNavigationPaneParsing()
+testNavigationDuplicateClients()
+testNavigationRemotePaths()
+testNavigationDeadlines()
+testNavigationIdentity()
+testNavigationCompletionOrder()
+testNavigationAttentionReceipt()
+testNavigationShellQuoting()
+testNavigationSharedDeadline()
+testNavigationCommandCounts()
 testRemotePaneTitleFallback()
 testRemotePaneTitleRefusals()
 testRemotePaneSelectionErrors()

@@ -21,6 +21,15 @@ struct Route: Decodable {
     let tab: String?
     /// The event helper command uses the same SSH host as the jump route.
     let events: [String]?
+    var recordedSocket: String?
+
+    enum CodingKeys: String, CodingKey {
+        case tmux, tab, events
+    }
+
+    func command(_ arguments: [String]) -> [String] {
+        (recordedSocket.map { ["-S", $0] } ?? []) + arguments
+    }
 
     var argv: [String] {
         guard let tmux, !tmux.isEmpty else { return ["tmux"] }

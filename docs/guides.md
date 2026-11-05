@@ -39,7 +39,7 @@ Click a row and the panel takes you back to that session's terminal tab.
 
 | Case | What happens |
 |---|---|
-| tmux session | Jumps to the exact pane. The hook captures `TMUX_PANE`, so this is exact. |
+| tmux session | Selects its pane on the recorded server. New hooks capture both identifiers. |
 | the session's tty is on a tab | Selects that tab and raises the window. |
 | the session's name is on one tab in its folder | Selects that tab. |
 | one Ghostty tab in that folder | Selects that tab. |
@@ -63,9 +63,10 @@ does a session in tmux, which jumps to its pane instead.
 The first click may raise a macOS prompt asking to let the panel control Ghostty. That
 is the automation permission, and the tab switch needs it.
 
-Clicking a row also acknowledges it: its dot turns blue and it stops counting toward the
-badge until that session reports another event. That is remembered across restarts, so a
-row you have seen does not come back red.
+A successful jump acknowledges the clicked event and stops its badge count.
+A failed jump or unfinished tab choice keeps the attention marker.
+An event that arrives during the jump remains unread.
+The app remembers acknowledgements across restarts.
 
 ## Hide a row
 
@@ -115,13 +116,28 @@ See the second machine guide below.
 
 For a local tmux pane, the panel finds its attached client and selects the Ghostty tab with the same terminal identifier.
 If several tabs contain clients, the panel shows a tab picker.
+The app also focuses the matching Ghostty split.
+It rejects a closed surface instead of selecting a replacement split.
 
-If a remote session reports no pane identifier, the panel uses its session title.
+If a session reports no pane identifier, the panel can use its session title.
 It accepts an exact pane title or a title with a ` | <suffix>` ending.
 It ignores status symbols before the title, such as the Codex spinner.
 The match ignores case and must identify one pane.
-Duplicate titles stop the jump.
+The app narrows title matches by attached clients and compatible folders.
+If several candidates remain, the app stops the jump.
 The pane must have an attached client and a matching folder.
+Remote folder aliases resolve on the remote host.
+
+New hook events include the tmux socket path.
+The app uses that socket for local and remote jumps.
+Older events without a socket use the default server or the route configuration.
+An unknown custom server cannot be inferred from a title alone.
+Local jumps reject a changed process or conflicting terminal identity.
+Linked windows use an attached session explicitly.
+
+Navigation runs in click order and ignores outdated results.
+An existing jump can take up to ten seconds before the latest click runs.
+Each jump shares one deadline across its commands.
 
 Two things measured on a real second machine, both of which the example above handles: a
 non-interactive ssh has no `tmux` on its `PATH`, so the absolute path is required; and a

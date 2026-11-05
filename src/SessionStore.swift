@@ -12,6 +12,11 @@ struct MachineGroup {
 /// No SwiftUI, no file access, no timers. The whole thing is driven by
 /// `apply(record:host:)` so tests can feed it a stream and assert on the result.
 final class SessionStore {
+    struct AttentionReceipt {
+        let key: SessionKey
+        let timestamp: Int
+        let position: EventPosition?
+    }
     private struct ProcessIdentity: Hashable {
         let pid: Int
         let started: String?
@@ -160,6 +165,17 @@ final class SessionStore {
         acknowledgedPositions[key] = positions[key]
     }
 
+    func attentionReceipt(for session: Session, now: Int) -> AttentionReceipt {
+        AttentionReceipt(key: session.key, timestamp: max(now, session.lastTs), position: positions[session.key])
+    }
+
+    func acknowledge(_ receipt: AttentionReceipt) {
+        acknowledged[receipt.key] = max(acknowledged[receipt.key] ?? 0, receipt.timestamp)
+        if let position = receipt.position {
+            acknowledgedPositions[receipt.key] = max(acknowledgedPositions[receipt.key] ?? position, position)
+        }
+    }
+
     /// Take back both maps from before a relaunch.
     ///
     /// The stored covers go in as they were, not through `dismiss` or `acknowledge`,
@@ -205,7 +221,7 @@ final class SessionStore {
 
     /// Has this session's latest event already been dealt with?
     ///
-    /// True after you clicked its row, until that session reports another event.
+    /// True after successful navigation, until that session reports another event.
     /// The row keeps its state and only the dot changes: it still wants you, you
     /// just know about it.
     func isAcknowledged(_ session: Session) -> Bool {

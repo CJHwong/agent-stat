@@ -28,31 +28,26 @@ extension AppDelegate {
     /// off the main thread with them.
     func jump(to session: Session) {
         let now = Int(Date().timeIntervalSince1970)
+        let receipt = store.attentionReceipt(for: session, now: now)
+        let refusal = TmuxTargeting.sharedPaneRefusal(for: session, among: store.visible(now: now))
         model.status = nil
-        // Clicking a row means you are dealing with it, so it stops counting as
-        // needing you. A later event raises the flag again.
-        store.acknowledge(session.key, now: now)
-        remember()
-        tick()
-        // A pane several rows name cannot be picked for one of them. Say so here,
-        // without an ssh round trip.
-        if let refusal = TmuxTargeting.sharedPaneRefusal(for: session,
-                                                         among: store.visible(now: now)) {
-            Log.write("jump \(session.key.host)/\(session.key.id) refused: \(refusal)")
-            model.status = refusal
-            tick()
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
+        model.picker = nil
+        navigation.receipt = nil
+        navigation.queue.submit({
+            if let refusal { return JumpExecution(summary: "refused", outcome: .failed(message: refusal)) }
             let plan = Jumper.plan(for: session, routes: Routes.load())
-            let outcome = Jumper.perform(plan)
-            Task { @MainActor in
-                // One line per click, so a failed jump can be read afterwards.
-                Log.write("jump \(session.key.host)/\(session.key.id) "
-                          + "plan=\(plan.summary) result=\(outcome.summary)")
-                self.show(outcome)
+            return JumpExecution(summary: plan.summary, outcome: Jumper.perform(plan))
+        }, completion: { [weak self] result in
+            guard let self else { return }
+            Log.write("jump \(session.key.host)/\(session.key.id) "
+                      + "plan=\(result.summary) result=\(result.outcome.summary)")
+            if result.outcome.succeeded {
+                self.store.acknowledge(receipt)
+                self.remember()
             }
-        }
+            if case .pick = result.outcome { self.navigation.receipt = receipt }
+            self.show(result.outcome)
+        })
     }
 
     /// Put a finished jump on screen: a status line, or the tabs to choose from.
@@ -70,31 +65,40 @@ extension AppDelegate {
     }
 
     func jumpTo(tab: GhosttyTab) {
+        let receipt = navigation.receipt
         model.picker = nil
-        DispatchQueue.global(qos: .userInitiated).async {
-            let outcome = Jumper.perform(.ghostty(folder: "", tabs: [tab]), tab: tab)
-            Task { @MainActor in
-                Log.write("jump tab=\(tab.name) result=\(outcome.summary)")
-                self.model.status = outcome.message
-                self.tick()
+        navigation.receipt = nil
+        navigation.queue.submit({
+            JumpExecution(summary: "selected tab", outcome: Jumper.performGhostty(tab: tab))
+        }, completion: { [weak self] result in
+            guard let self else { return }
+            Log.write("jump tab=\(tab.name) result=\(result.outcome.summary)")
+            if result.outcome.succeeded, let receipt {
+                self.store.acknowledge(receipt)
+                self.remember()
             }
-        }
+            self.model.status = result.outcome.message
+            self.tick()
+        })
     }
+
 }
 
 /// One line of evidence per click, for the log.
 extension JumpPlan {
     var summary: String {
         switch self {
-        case .tmux(let pane):
-            return "tmux pane=\(pane)"
+        case .tmux(let pane, _):
+            return "tmux pane=\(pane ?? "title lookup")"
+        case .unavailable(let message):
+            return "unavailable \(message)"
         case .ghostty(let folder, let tabs):
             return "ghostty folder=\(folder) tabs=\(tabs.count)"
         case .raiseApp(let name):
             return "raise app=\(name)"
         case .remote(let host):
             return "no route host=\(host)"
-        case .route(let host, let route, let pane, let folder, let title):
+        case .route(let host, let route, let pane, let folder, let title, _):
             return "route host=\(host) pane=\(pane ?? "-") folder=\(folder) "
                 + "tab=\(route.tab ?? "-") title=\(title ?? "-")"
         }
@@ -106,6 +110,8 @@ extension JumpOutcome {
         switch self {
         case .done(let message):
             return message ?? "ok"
+        case .failed(let message):
+            return message
         case .pick(let folder, let tabs):
             return "pick \(tabs.count) tabs in \(folder)"
         }

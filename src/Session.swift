@@ -69,6 +69,7 @@ struct Session {
     /// every record written before it was captured has no value.
     var tty: String = ""
     var tmuxPane: String?
+    var tmuxSocket: String?
     /// nil means unknown. Local probes and remote status frames report liveness.
     var alive: Bool?
     /// When the app first noticed this session's process was gone. Used to clear
@@ -104,10 +105,14 @@ struct Session {
         // A new process is a new launch, so it gets a new anchor. This must run
         // before the folder copy below, or the anchor keeps the old folder.
         if let pid = record.agentPid, pid > 0 {
-            if agentPid != pid {
+            let changedStart = record.agentStart.map { !($0.isEmpty) && agentStart != nil && agentStart != $0 } ?? false
+            if agentPid != pid || changedStart {
                 agentStart = nil
                 launchCwd = ""
                 tty = ""
+                tmuxPane = nil
+                tmuxSocket = nil
+                term = nil
             }
             agentPid = pid
         }
@@ -125,6 +130,7 @@ struct Session {
         if let term = record.term, !term.isEmpty { self.term = term }
         if let tty = record.tty, !tty.isEmpty { self.tty = tty }
         if let pane = record.tmux, !pane.isEmpty { tmuxPane = pane }
+        if let socket = record.tmuxSocket, !socket.isEmpty { tmuxSocket = socket }
         if let message = record.message, !message.isEmpty { lastMessage = message }
     }
 
