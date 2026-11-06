@@ -77,6 +77,7 @@ Unchanged logs with precise change timestamps skip the open and digest check.
 Changed logs and logs with coarse timestamps receive full validation.
 
 A failed stream shows the host as offline and retains its cached history.
+Connected hosts with no visible sessions show a `No active sessions` placeholder.
 Reconnect delays increase from one second to 30 seconds.
 A stream with no heartbeat for 20 seconds also becomes offline.
 During slow cached replay, compatible helpers send progress without marking the host connected.

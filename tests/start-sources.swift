@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 func testStartSources() {
+    testEmptyConnectedHosts()
     print("session start sources and dot colors")
     let cases: [(String?, String)] = [
         ("startup", "ready"), ("resume", "resumed"),
@@ -32,4 +33,19 @@ func testStartSources() {
         checkEqual(model.groups[0].rows[0].detail, "thinking", "work replaces the start text")
         check(model.groups[0].rows[0].isWorking, "a running turn pulses")
     }
+}
+
+@MainActor
+func testEmptyConnectedHosts() {
+    let model = PanelModel()
+    let directory = URL(fileURLWithPath: "/unused")
+    model.update(from: [], now: 1, eventsDirectory: directory, attention: 0,
+                 acknowledged: { _ in false }, connections: ["office": "connected"])
+    checkEqual(model.groups.map(\.host), ["office"], "an empty connected host remains visible")
+    checkEqual(model.groups[0].emptyMessage, "No active sessions", "an empty connected host has a placeholder")
+    checkEqual(model.estimatedContentHeight, 59, "the placeholder contributes to panel height")
+    let changed = model.update(from: [], now: 2, eventsDirectory: directory, attention: 0,
+                               acknowledged: { _ in false }, connections: ["office": "offline"])
+    check(changed.layout, "the panel resizes when the placeholder disappears")
+    checkEqual(model.groups[0].emptyMessage, nil, "an offline host does not claim it has no sessions")
 }

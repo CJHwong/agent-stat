@@ -50,6 +50,14 @@ struct PanelView: View {
         } else {
             ForEach(model.groups) { group in
                 machineHeader(group)
+                if let message = group.emptyMessage {
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(group.rows) { row in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {

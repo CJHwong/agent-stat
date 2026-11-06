@@ -66,6 +66,10 @@ struct RowGroup: Identifiable {
     var connection: String?
 
     var id: String { host }
+
+    var emptyMessage: String? {
+        rows.isEmpty && connection == "connected" ? "No active sessions" : nil
+    }
 }
 
 /// Shown when more than one tab in the same folder could be the session.
@@ -109,7 +113,8 @@ final class PanelModel: ObservableObject {
         if let picker { return 80 + CGFloat(picker.tabs.count) * 30 }
         if emptyHint != nil { return 60 }
         let rows = groups.reduce(0) { $0 + $1.rows.count }
-        return CGFloat(rows) * 50 + CGFloat(groups.count) * 29
+        let placeholders = groups.filter { $0.emptyMessage != nil }.count
+        return CGFloat(rows) * 50 + CGFloat(groups.count) * 29 + CGFloat(placeholders) * 30
     }
 
     /// Set by the app delegate. Clicking a row asks it to take you to the session.
@@ -169,7 +174,7 @@ final class PanelModel: ObservableObject {
             + "|picker:\(picker.map { "\($0.label)|\($0.tabs.map(\.id).joined(separator: ","))" } ?? "")"
             + "|status:\(status ?? "")"
             + "|hint:\(hint == nil ? "" : "1")"
-        let layoutSignature = built.map { "\($0.host)|\($0.rows.count)" }.joined()
+        let layoutSignature = built.map { "\($0.host)|\($0.rows.count)|\($0.emptyMessage ?? "")" }.joined()
             + "|picker:\(picker.map { "\($0.label)|\($0.tabs.count)" } ?? "")"
             + "|status:\(status ?? "")"
             + "|hint:\(hint == nil ? "" : "1")"
