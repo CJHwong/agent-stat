@@ -97,6 +97,8 @@ See [snapshot behavior](explanation.md#why-a-closed-program-does-not-stay-recove
 Recovery saves each agent's profile, explicit model, and effort setting.
 It also saves an explicit Codex `--no-daemon` flag.
 Recovery captures external launchers from the agent's ancestors inside its tmux pane.
+This supports persistent launchers for both Claude and Codex.
+Codex recovery checks for one foreground Codex process, even when its launcher leads the process group.
 A launcher must name the agent in its arguments. A `--` separator identifies forwarded agent arguments when present.
 Recovery keeps the launcher prefix and replaces old resume arguments with the saved conversation ID.
 This supports wrappers without rules for a specific provider or shell alias.

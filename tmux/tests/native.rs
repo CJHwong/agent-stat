@@ -1069,6 +1069,94 @@ fn wrapped_agent_recovery_preserves_launcher_model_and_profile() {
 }
 
 #[test]
+fn wrapped_codex_without_hooks_recovers_the_current_conversation() {
+    let sandbox = Sandbox::new();
+    let bin = sandbox.root.join("bin");
+    fs::create_dir(&bin).unwrap();
+    fs::copy(worker(&sandbox.root), bin.join("codex")).unwrap();
+    success(
+        Command::new("rustc")
+            .args(["--edition=2024", "tests/fixtures/launcher.rs", "-o"])
+            .arg(bin.join("relay"))
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .unwrap(),
+    );
+    let profile = sandbox.root.join("codex profile");
+    fs::create_dir_all(profile.join("sessions")).unwrap();
+    let current = "00000000-0000-7000-8000-000000000002";
+    let original = "00000000-0000-7000-8000-000000000001";
+    fs::write(
+        profile.join("session_index.jsonl"),
+        serde_json::to_vec(&serde_json::json!({"id":current,"thread_name":"Wrapped current"}))
+            .unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        profile
+            .join("sessions")
+            .join(format!("rollout-{current}.jsonl")),
+        serde_json::to_vec(&serde_json::json!({"type":"session_meta","payload":{"id":current}}))
+            .unwrap(),
+    )
+    .unwrap();
+    let marker = sandbox.root.join("codex-arguments");
+    let child_pid = sandbox.root.join("codex-pid");
+    sandbox.start("source", &format!("env CODEX_HOME={} TEST_WORKER_OUTPUT={} TEST_CHILD_PID={} {} launch codex --model test-model -- resume {original}",quote(profile.to_str().unwrap()),quote(marker.to_str().unwrap()),quote(child_pid.to_str().unwrap()),quote(bin.join("relay").to_str().unwrap())));
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    wait_for_file(&marker);
+    sandbox.tmux(&[
+        "select-pane",
+        "-t",
+        "source:",
+        "-T",
+        "Wrapped current | work",
+    ]);
+    let snapshot: serde_json::Value = serde_json::from_str(&success(
+        sandbox.command("source", "snapshot").output().unwrap(),
+    ))
+    .unwrap();
+    let agent = &snapshot["windows"][0]["panes"][0]["agent"];
+    assert_eq!(agent["session_id"], current);
+    assert_eq!(agent["profile"], profile.to_str().unwrap());
+    assert_eq!(
+        agent["launch"]["launcher"],
+        serde_json::json!([
+            bin.join("relay").to_str().unwrap(),
+            "launch",
+            "codex",
+            "--model",
+            "test-model",
+            "--"
+        ])
+    );
+    for (name, value) in [
+        ("TEST_WORKER_OUTPUT", marker.to_str().unwrap()),
+        ("TEST_CHILD_PID", child_pid.to_str().unwrap()),
+    ] {
+        sandbox.tmux(&["set-environment", "-g", name, value]);
+    }
+    sandbox.tmux(&["kill-session", "-t", "source"]);
+    fs::remove_file(&marker).unwrap();
+    fs::remove_file(&child_pid).unwrap();
+    success(sandbox.command("source", "restore").output().unwrap());
+    wait_for_file(&marker);
+    wait_for_file(&child_pid);
+    let restored = fs::read_to_string(&marker).unwrap();
+    assert!(restored.contains(&format!("resume\0{current}\0")));
+    assert!(restored.contains("--model\0test-model\0"));
+    assert!(!restored.contains(original));
+    assert!(!restored.contains("--no-daemon"));
+    assert_eq!(
+        restored
+            .split('\0')
+            .filter(|argument| *argument == "resume")
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn codex_switched_title_without_hooks_restores_the_current_conversation() {
     let sandbox = Sandbox::new();
     let worker = worker(&sandbox.root);

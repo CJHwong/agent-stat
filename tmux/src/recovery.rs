@@ -233,20 +233,34 @@ fn codex_title_identifier(profile: &Path, title: &str) -> io::Result<Option<Stri
     }
     Ok(transcript_exists(profile, &identifier)?.then_some(identifier))
 }
+fn foreground_codex(root: u32, processes: &HashMap<u32, Process>) -> Option<u32> {
+    let mut candidates = processes.iter().filter_map(|(pid, process)| {
+        if process.group != process.foreground || !model::belongs(*pid, root, processes) {
+            return None;
+        }
+        let arguments = commands::arguments(*pid).ok()?;
+        let program = arguments
+            .first()
+            .and_then(|program| Path::new(program).file_name());
+        let subcommand = arguments.iter().any(|argument| {
+            matches!(
+                argument.as_str(),
+                "exec" | "app-server" | "debug" | "review"
+            )
+        });
+        (program == Some(std::ffi::OsStr::new("codex")) && !subcommand).then_some(*pid)
+    });
+    let pid = candidates.next()?;
+    candidates.next().is_none().then_some(pid)
+}
 fn codex_from_title(
     options: &Options,
     entry: &Entry,
     processes: &HashMap<u32, Process>,
 ) -> io::Result<Option<Agent>> {
-    let pid = commands::foreground(entry.root_pid, processes);
-    let arguments = commands::arguments(pid).unwrap_or_default();
-    if arguments
-        .first()
-        .and_then(|program| Path::new(program).file_name())
-        != Some(std::ffi::OsStr::new("codex"))
-    {
+    let Some(pid) = foreground_codex(entry.root_pid, processes) else {
         return Ok(None);
-    }
+    };
     let profile = commands::profile(pid, "codex")?;
     let title = model::tmux(
         &options.socket,

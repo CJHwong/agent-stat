@@ -76,6 +76,8 @@ The snapshot saves the matched conversation ID and profile.
 Restore constructs one native resume command from that ID. It does not append resume flags to the saved agent command.
 An original `claude --resume old-id` therefore does not become `claude --resume old-id --resume saved-id`.
 For external launchers, recovery keeps the launcher prefix and replaces the forwarded agent arguments.
+A wrapper can lead the foreground process group while Codex runs as its child.
+The Codex fallback requires exactly one foreground Codex process within the pane before checking its title.
 The agent reads its history from its own profile and transcript files.
 
 ## Why a closed program does not stay recoverable
