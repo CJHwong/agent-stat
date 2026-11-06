@@ -52,7 +52,29 @@ pub fn is_codex_command(command: &str) -> bool {
     });
     COMMAND.is_match(command)
 }
+pub fn ollama_launcher(arguments: &[String], agent: &str) -> Option<Vec<String>> {
+    let program = arguments
+        .first()
+        .and_then(|program| Path::new(program).file_name());
+    if program != Some(std::ffi::OsStr::new("ollama"))
+        || arguments.get(1).map(String::as_str) != Some("launch")
+        || arguments.get(2).map(String::as_str) != Some(agent)
+        || !matches!(agent, "claude" | "codex")
+    {
+        return None;
+    }
+    let end = arguments
+        .iter()
+        .position(|argument| argument == "--")
+        .unwrap_or(arguments.len());
+    let mut prefix = arguments[..end].to_vec();
+    prefix.push("--".into());
+    replayable(&prefix).then_some(prefix)
+}
 pub fn launcher_prefix(arguments: &[String], agent: &str) -> Option<Vec<String>> {
+    if let Some(prefix) = ollama_launcher(arguments, agent) {
+        return Some(prefix);
+    }
     let agent_index = arguments
         .iter()
         .enumerate()
@@ -298,6 +320,39 @@ pub fn capture(root: u32, processes: &HashMap<u32, Process>) -> Capture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ollama_launch_keeps_options_and_inserts_the_forwarding_separator() {
+        for agent in ["claude", "codex"] {
+            let arguments = [
+                "/usr/bin/ollama",
+                "launch",
+                agent,
+                "--model",
+                "local-model",
+                "--yes",
+            ]
+            .map(String::from);
+            let mut expected = arguments.to_vec();
+            expected.push("--".into());
+            assert_eq!(launcher_prefix(&arguments, agent), Some(expected.clone()));
+            let forwarded = expected
+                .iter()
+                .cloned()
+                .chain(["resume".into(), "old-id".into()])
+                .collect::<Vec<_>>();
+            assert_eq!(launcher_prefix(&forwarded, agent), Some(expected));
+            let bare = ["ollama", "launch", agent].map(String::from);
+            assert_eq!(
+                launcher_prefix(&bare, agent),
+                Some(vec![
+                    "ollama".into(),
+                    "launch".into(),
+                    agent.into(),
+                    "--".into()
+                ])
+            );
+        }
+    }
     #[test]
     fn generic_launchers_drop_existing_resume_arguments() {
         let arguments = [

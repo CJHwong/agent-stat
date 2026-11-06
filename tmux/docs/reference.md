@@ -106,6 +106,7 @@ Claude's native session registry can provide recovery metadata without supplying
 Codex recovery also accepts a unique native name from the current terminal title with matching transcript metadata.
 This fallback uses the current conversation name instead of an ID retained in the launch command.
 Recovery chooses an unused destination name and preserves existing recovery sessions.
+Ollama launchers retain their options and receive `--` before forwarded Claude or Codex resume arguments.
 
 Restore all skips commands that remain running, contain masked credentials, or represent interactive shells.
 Snapshots without exact arguments, a process identifier, or a process start time cannot supply a rerunnable command.

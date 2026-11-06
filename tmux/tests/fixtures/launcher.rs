@@ -8,13 +8,14 @@ fn main() {
         .iter()
         .position(|argument| argument == "--model")
         .unwrap();
-    let separator = arguments
+    let forwarded = arguments
         .iter()
         .position(|argument| argument == "--")
-        .unwrap();
+        .map(|index| index + 1)
+        .unwrap_or(arguments.len());
     let mut child = Command::new(env::current_exe().unwrap().with_file_name(&arguments[2]))
         .args(["--model", &arguments[model + 1]])
-        .args(&arguments[separator + 1..])
+        .args(&arguments[forwarded..])
         .spawn()
         .unwrap();
     fs::write(env::var("TEST_CHILD_PID").unwrap(), child.id().to_string()).unwrap();

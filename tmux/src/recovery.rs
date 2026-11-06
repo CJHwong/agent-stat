@@ -652,6 +652,13 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
         .flat_map(|window| &mut window.panes)
     {
         recover_saved_identifier(pane)?;
+        if let Some(launcher) =
+            commands::ollama_launcher(&pane.command.command_argv, &pane.agent.agent).or_else(|| {
+                commands::ollama_launcher(&pane.agent.launch.launcher, &pane.agent.agent)
+            })
+        {
+            pane.agent.launch.launcher = launcher;
+        }
         if pane.agent.launch.launcher.is_empty() {
             pane.agent.launch.launcher =
                 commands::launcher_prefix(&pane.command.command_argv, &pane.agent.agent)

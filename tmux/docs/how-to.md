@@ -101,7 +101,12 @@ This supports persistent launchers for both Claude and Codex.
 Codex recovery checks for one foreground Codex process, even when its launcher leads the process group.
 A launcher must name the agent in its arguments. A `--` separator identifies forwarded agent arguments when present.
 Recovery keeps the launcher prefix and replaces old resume arguments with the saved conversation ID.
-This supports wrappers without rules for a specific provider or shell alias.
+Generic capture supports wrappers without rules for a specific shell alias.
+Ollama also has explicit support for `ollama launch claude` and `ollama launch codex`.
+Recovery keeps their launcher options, including an explicit `--model` and `--yes`.
+It inserts `--` before native resume arguments, even if the original launch omitted that separator.
+If an older snapshot retains the original arguments, recovery can repair its incomplete Ollama prefix.
+Otherwise, save a new snapshot while the agent runs.
 Aliases expand before the program starts, so recovery saves their effective external launcher, not the alias name.
 Shell-only wrappers that disappear through `exec`, or hide the agent from their arguments, cannot be reconstructed this way.
 Shell aliases do not need to exist in the new tmux server.

@@ -1069,6 +1069,108 @@ fn wrapped_agent_recovery_preserves_launcher_model_and_profile() {
 }
 
 #[test]
+fn ollama_launch_without_separator_restores_both_agents() {
+    for agent_name in ["claude", "codex"] {
+        ollama_launch_recovery(agent_name);
+    }
+}
+fn ollama_launch_recovery(agent_name: &str) {
+    let sandbox = Sandbox::new();
+    let bin = sandbox.root.join("bin");
+    fs::create_dir(&bin).unwrap();
+    fs::copy(worker(&sandbox.root), bin.join(agent_name)).unwrap();
+    success(
+        Command::new("rustc")
+            .args(["--edition=2024", "tests/fixtures/launcher.rs", "-o"])
+            .arg(bin.join("ollama"))
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .unwrap(),
+    );
+    let profile = sandbox.root.join("profile");
+    fs::create_dir(&profile).unwrap();
+    let variable = if agent_name == "claude" {
+        "CLAUDE_CONFIG_DIR"
+    } else {
+        "CODEX_HOME"
+    };
+    let marker = sandbox.root.join("restored-arguments");
+    let child_pid = sandbox.root.join("child-pid");
+    sandbox.start("source", &format!("env {variable}={} TEST_WORKER_OUTPUT={} TEST_CHILD_PID={} {} launch {agent_name} --model test-model --yes",quote(profile.to_str().unwrap()),quote(marker.to_str().unwrap()),quote(child_pid.to_str().unwrap()),quote(bin.join("ollama").to_str().unwrap())));
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    wait_for_file(&marker);
+    wait_for_file(&child_pid);
+    let pid: u32 = fs::read_to_string(&child_pid).unwrap().parse().unwrap();
+    let pane = sandbox.tmux(&["display-message", "-p", "-t", "source:", "#{pane_id}"]);
+    append_event(
+        &event_file(&sandbox),
+        serde_json::json!({"event":"Stop","session":"saved-current","agent":agent_name,"agent_pid":pid,"tmux":pane,"ts":1}),
+    );
+    let mut snapshot: serde_json::Value = serde_json::from_str(&success(
+        sandbox.command("source", "snapshot").output().unwrap(),
+    ))
+    .unwrap();
+    let expected = serde_json::json!([
+        bin.join("ollama").to_str().unwrap(),
+        "launch",
+        agent_name,
+        "--model",
+        "test-model",
+        "--yes",
+        "--"
+    ]);
+    assert_eq!(
+        snapshot["windows"][0]["panes"][0]["agent"]["launch"]["launcher"],
+        expected
+    );
+    // Older snapshots retain wrapper arguments but omit launcher options from the prefix.
+    snapshot["windows"][0]["panes"][0]["agent"]["launch"]["launcher"] =
+        serde_json::json!([bin.join("ollama").to_str().unwrap(), "launch", agent_name]);
+    let path = fs::read_dir(sandbox.root.join("state/snapshots"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    fs::write(path, serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&success(
+        sandbox.command("source", "plan").output().unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(
+        plan["snapshot"]["windows"][0]["panes"][0]["agent"]["launch"]["launcher"],
+        expected
+    );
+    for (name, value) in [
+        ("TEST_WORKER_OUTPUT", marker.to_str().unwrap()),
+        ("TEST_CHILD_PID", child_pid.to_str().unwrap()),
+    ] {
+        sandbox.tmux(&["set-environment", "-g", name, value]);
+    }
+    sandbox.tmux(&["kill-session", "-t", "source"]);
+    fs::remove_file(&marker).unwrap();
+    fs::remove_file(&child_pid).unwrap();
+    success(sandbox.command("source", "restore").output().unwrap());
+    wait_for_file(&marker);
+    wait_for_file(&child_pid);
+    let restored = fs::read_to_string(marker).unwrap();
+    let resume = if agent_name == "claude" {
+        "--resume"
+    } else {
+        "resume"
+    };
+    assert!(restored.contains(&format!("{resume}\0saved-current\0")));
+    assert!(restored.contains("--model\0test-model\0"));
+    assert_eq!(
+        restored
+            .split('\0')
+            .filter(|argument| *argument == resume)
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn wrapped_codex_without_hooks_recovers_the_current_conversation() {
     let sandbox = Sandbox::new();
     let bin = sandbox.root.join("bin");

@@ -78,6 +78,9 @@ An original `claude --resume old-id` therefore does not become `claude --resume 
 For external launchers, recovery keeps the launcher prefix and replaces the forwarded agent arguments.
 A wrapper can lead the foreground process group while Codex runs as its child.
 The Codex fallback requires exactly one foreground Codex process within the pane before checking its title.
+Ollama requires `--` before forwarded agent arguments.
+Recovery preserves Ollama launcher options and inserts that separator before the new resume command.
+This applies to both Claude and Codex. The alias name does not affect detection.
 The agent reads its history from its own profile and transcript files.
 
 ## Why a closed program does not stay recoverable
