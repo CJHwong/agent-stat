@@ -62,7 +62,7 @@ pub fn replayable(arguments: &[String]) -> bool {
     }
     if matches!(
         name.trim_start_matches('-'),
-        "bash" | "zsh" | "sh" | "fish" | "dash" | "claude" | "codex"
+        "bash" | "zsh" | "sh" | "fish" | "dash" | "claude" | "codex" | "agent-stat-tmux"
     ) {
         return false;
     }
@@ -222,6 +222,19 @@ mod tests {
             .map(String::from)
             .collect::<Vec<_>>();
         assert!(!replayable(&arguments));
+    }
+    #[test]
+    fn sidebar_startup_helpers_are_not_replayed() {
+        for executable in [
+            "agent-stat-tmux",
+            "/home/example/.agents/tmux/agent-stat-tmux",
+        ] {
+            let arguments = [executable, "--session", "0", "shell"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>();
+            assert!(!replayable(&arguments));
+        }
     }
     #[test]
     fn exact_arguments_keep_spaces_empty_values_and_shell_punctuation() {

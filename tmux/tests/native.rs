@@ -2433,6 +2433,71 @@ fn cached_hook_guards_are_empty_and_disappear_after_the_old_caller_exits() {
 }
 
 #[test]
+fn server_restart_keeps_recovery_while_the_startup_helper_runs() {
+    use std::os::fd::AsRawFd;
+    let sandbox = Sandbox::new();
+    let worker = worker(&sandbox.root);
+    let marker = sandbox.root.join("worker-output");
+    sandbox.start(
+        "restart",
+        &format!(
+            "{} {}",
+            quote(worker.to_str().unwrap()),
+            quote(marker.to_str().unwrap())
+        ),
+    );
+    wait_for_file(&marker);
+    success(sandbox.command("restart", "snapshot").output().unwrap());
+    let snapshot = fs::read_dir(sandbox.root.join("state/snapshots"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let saved = fs::read(&snapshot).unwrap();
+    sandbox.tmux(&["kill-server"]);
+    sandbox.start("restart", "/bin/sh");
+    sandbox.tmux(&["set-option", "-g", "@window_sidebar_enabled", "1"]);
+    let lock = fs::File::create(sandbox.root.join("state/layout.lock")).unwrap();
+    assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+    let pane = sandbox.tmux(&["display-message", "-p", "-t", "restart:", "#{pane_id}"]);
+    let helper = format!(
+        "{} --socket {} --session restart --pane {} shell",
+        quote(binary()),
+        quote(sandbox.socket.to_str().unwrap()),
+        pane
+    );
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &pane, &helper]);
+    let mut monitor = sandbox
+        .command("restart", "monitor")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(4);
+    let mut available = String::new();
+    while available.is_empty() && std::time::Instant::now() < deadline {
+        available = sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "restart:",
+            "#{@window_sidebar_recovery}",
+        ]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    unsafe { libc::kill(monitor.id() as i32, libc::SIGTERM) };
+    monitor.wait().unwrap();
+    assert_eq!(
+        fs::read(&snapshot).unwrap(),
+        saved,
+        "The startup helper must not replace saved work"
+    );
+    assert_eq!(available, "1");
+    assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_UN) }, 0);
+}
+
+#[test]
 fn monitor_preserves_reboot_snapshots_and_records_deliberate_closures() {
     let sandbox = Sandbox::new();
     let worker = worker(&sandbox.root);

@@ -58,9 +58,10 @@ That is why command reruns require an explicit selection in the preview.
 ## Why a closed program does not stay recoverable
 
 The monitor saves about every ten seconds. A fresh empty shell after a restart does not erase the last recoverable snapshot.
+Internal sidebar helpers do not count as recoverable work during startup.
 Once the monitor sees recoverable work, later snapshots follow the session's current state, including deliberate closures.
 A closed window therefore disappears from later snapshots. Recovery is a recent session snapshot, not an archive of every closed program.
-Tests simulate restarts with isolated sessions; they do not reboot the host.
+Tests stop and restart isolated tmux servers. They check snapshot preservation while a startup helper runs.
 
 ## Why an extra tmux client appears
 
