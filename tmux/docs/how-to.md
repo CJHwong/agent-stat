@@ -73,9 +73,17 @@ Before native layout changes or pane swaps, hide the sidebar with Ctrl+b, then T
 A saved command can repeat its actions. Review its arguments before selecting it.
 
 1. Press Ctrl+b, then `r`, or choose **Recover saved work** from F1.
-2. Review the preview. Supported Claude and Codex conversations use their native resume commands.
-3. To rerun a saved command, press `c` to reach it, then Space to select it. You can also click its checkbox.
-4. Press `r`, or click **Restore**, to create `recovered-<session>`.
+2. Check the source session, destination session, and saved window names in the preview.
+3. Review the preview. Supported Claude and Codex conversations use their native resume commands.
+4. To rerun a saved command, press `c` to reach it, then Space to select it. You can also click its checkbox.
+5. Press `r`, or click **Restore**, to create `recovered-<session>`.
+
+Press `s` or click **Save current session** to save all current windows and refresh the preview.
+Saving replaces the latest snapshot for this session. Save before stopping the tmux server.
+The preview shows **Snapshot saved.** after a successful save.
+
+Restore creates a separate session with all saved windows. It keeps their names and pane layouts.
+You cannot select one destination window. Each saved window becomes a window in the recovered session.
 
 Other panes open shells in their saved folders. Commands start unselected.
 Restore requires a resumable conversation or a selected eligible command.

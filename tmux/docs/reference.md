@@ -29,6 +29,8 @@ If you use another prefix, substitute it for Ctrl+b.
 | Ctrl+b / or sidebar Search | Search titles, folders, and commands. |
 | Ctrl+b f | Show the full title, folder, and command. |
 | Ctrl+b r | Open the recovery preview. |
+| `s` in recovery | Save all current windows and replace this session's latest snapshot. |
+| `c` in recovery | Move to the next saved command. Space selects it for rerun. |
 | Ctrl+b Tab | Toggle the sidebar. |
 | Ctrl+b z | Toggle full zoom for the content pane. |
 | Ctrl+b ? | Show shortcuts. Escape or `q` closes the list. |

@@ -2193,6 +2193,74 @@ fn terminal_controls(shared: bool) {
 }
 
 #[test]
+fn recovery_preview_saves_and_refreshes_all_windows() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("source", "/bin/sh");
+    sandbox.tmux(&["rename-window", "-t", "source:0", "first-saved-window"]);
+    sandbox.tmux(&["set-option", "-g", "allow-rename", "off"]);
+    sandbox.tmux(&["set-option", "-g", "automatic-rename", "off"]);
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    success(sandbox.command("source", "enable").output().unwrap());
+    let mut client = Client::attach(&sandbox, "source");
+    client.drain(Duration::from_millis(800));
+    client.send(b"\x02r");
+    client.expect("No saved recovery snapshot");
+    client.send(b"\0");
+    client.expect("Saving replaces the latest snapshot");
+    client.send(b"s");
+    client.expect("Snapshot saved.");
+    client.send(b"\0");
+    client.expect("Source session: source");
+    client.send(b"\0");
+    client.expect("Restore into: recovered-source");
+    client.send(b"\0");
+    client.expect("Window 0: first-saved-window");
+    sandbox.tmux(&[
+        "new-window",
+        "-d",
+        "-t",
+        "source:1",
+        "-n",
+        "second-saved-window",
+        "/bin/sh",
+    ]);
+    client.send(b"s");
+    client.expect("Window 1: second-saved-window");
+    let snapshot = fs::read_dir(sandbox.root.join("state/snapshots"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let saved: serde_json::Value = serde_json::from_slice(&fs::read(snapshot).unwrap()).unwrap();
+    assert_eq!(saved["windows"].as_array().unwrap().len(), 2);
+    assert_eq!(saved["windows"][1]["name"], "second-saved-window");
+    assert_eq!(
+        sandbox.tmux(&["list-sessions", "-F", "#{session_name}"]),
+        "source"
+    );
+    client.send(b"\x1b");
+}
+
+#[test]
 fn native_recovery_preview_cancels_fast_and_reruns_only_checked_commands() {
     let sandbox = Sandbox::new();
     let worker = worker(&sandbox.root);

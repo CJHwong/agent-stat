@@ -1,5 +1,6 @@
 use crate::{
     Options,
+    events::Reader,
     recovery::{self, Plan},
     ui,
 };
@@ -35,10 +36,18 @@ fn lines(
     }
     row(
         &mut rows,
+        format!("Source session: {}", plan.snapshot.session),
+    );
+    row(
+        &mut rows,
         format!("Restore into: recovered-{}", plan.snapshot.session),
     );
     row(&mut rows, String::new());
     for window in &plan.snapshot.windows {
+        row(
+            &mut rows,
+            format!("Window {}: {}", window.index, window.name),
+        );
         for pane in window.panes.iter().filter(|pane| !pane.sidebar) {
             rows.extend(pane_rows(
                 pane,
@@ -110,13 +119,26 @@ fn toggle(selected: &mut HashSet<String>, pane: &str) {
         selected.insert(pane.into());
     }
 }
+fn load(options: &Options, sender: &std::sync::mpsc::Sender<io::Result<Plan>>, save: bool) {
+    let background = options.clone();
+    let sender = sender.clone();
+    std::thread::spawn(move || {
+        let result = (|| {
+            if save {
+                let mut reader =
+                    Reader::new(background.event_root.clone(), background.host.clone());
+                recovery::save(&background, &mut reader, true)?;
+            }
+            recovery::plan(&background)
+        })();
+        // Closing the preview cancels delivery, not the snapshot operation.
+        let _ = sender.send(result);
+    });
+}
 pub fn run(options: &Options) -> io::Result<()> {
     let (sender, receiver) = std::sync::mpsc::channel();
-    let background = options.clone();
-    std::thread::spawn(move || {
-        // Closing the preview cancels delivery, not the snapshot check.
-        let _ = sender.send(recovery::plan(&background));
-    });
+    load(options, &sender, false);
+    let mut saving = false;
     let mut plan = Err(io::Error::other("Loading saved sessions..."));
     let mut loading = true;
     let _terminal = ui::Terminal::open()?;
@@ -131,8 +153,19 @@ pub fn run(options: &Options) -> io::Result<()> {
     let mut frame = std::time::Instant::now() - Duration::from_secs(1);
     loop {
         if let Ok(ready) = receiver.try_recv() {
-            plan = ready;
+            if saving && ready.is_ok() {
+                error = "Snapshot saved.".into();
+                selected.clear();
+                current = 0;
+                offset = 0;
+            }
+            match ready {
+                Ok(ready) => plan = Ok(ready),
+                Err(failure) if saving => error = format!("Save failed: {failure}"),
+                Err(failure) => plan = Err(failure),
+            }
             loading = false;
+            saving = false;
             rows_dirty = true;
             dirty = true;
         }
@@ -146,6 +179,28 @@ pub fn run(options: &Options) -> io::Result<()> {
                     command: None,
                 }],
             };
+            rows.splice(
+                0..0,
+                [
+                    Row {
+                        text: "[s] Save current session".into(),
+                        command: None,
+                    },
+                    Row {
+                        text: "Saving replaces the latest snapshot for this session.".into(),
+                        command: None,
+                    },
+                ],
+            );
+            if !error.is_empty() {
+                rows.insert(
+                    2,
+                    Row {
+                        text: error.clone(),
+                        command: None,
+                    },
+                );
+            }
             rows_dirty = false;
             wrapped_width = width;
             dirty = true;
@@ -156,11 +211,13 @@ pub fn run(options: &Options) -> io::Result<()> {
             .is_ok_and(|plan| !plan.eligible.is_empty() || !selected.is_empty());
         if dirty && (frame.elapsed() >= Duration::from_millis(16) || !event::poll(Duration::ZERO)?)
         {
-            let footer = if loading {
+            let footer = if saving {
+                "Saving snapshot...  Esc: Close".into()
+            } else if loading {
                 "Loading saved sessions...  Esc: Close".into()
-            } else if error.is_empty() {
+            } else {
                 format!(
-                    "{}-{}/{}  {}  Space: Select  c: Next command  Esc: Close",
+                    "{}-{}/{}  {}  Space: Select  [c] Next command  Esc: Close",
                     offset + 1,
                     (offset + capacity).min(rows.len()),
                     rows.len(),
@@ -172,8 +229,6 @@ pub fn run(options: &Options) -> io::Result<()> {
                         "Nothing to restore (already running)"
                     }
                 )
-            } else {
-                format!("{error}  Esc: Close")
             };
             ui::text_frame(
                 "RECOVERY PREVIEW",
@@ -192,6 +247,7 @@ pub fn run(options: &Options) -> io::Result<()> {
             continue;
         }
         let mut restore = false;
+        let mut save = false;
         match event::read()? {
             Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(()),
@@ -221,7 +277,8 @@ pub fn run(options: &Options) -> io::Result<()> {
                         rows_dirty = true;
                     }
                 }
-                KeyCode::Char('r') => restore = available,
+                KeyCode::Char('r') => restore = available && !loading,
+                KeyCode::Char('s') => save = !loading,
                 _ => {}
             },
             Event::Mouse(mouse) => match mouse.kind {
@@ -230,7 +287,10 @@ pub fn run(options: &Options) -> io::Result<()> {
                 MouseEventKind::Down(MouseButton::Left)
                     if mouse.row == height.saturating_sub(1) =>
                 {
-                    restore = available
+                    restore = available && !loading
+                }
+                MouseEventKind::Down(MouseButton::Left) if mouse.row == 1 && offset == 0 => {
+                    save = !loading;
                 }
                 MouseEventKind::Down(MouseButton::Left) if mouse.row > 0 => {
                     if let Some(pane) = rows
@@ -245,7 +305,15 @@ pub fn run(options: &Options) -> io::Result<()> {
             },
             _ => {}
         }
+        if save {
+            loading = true;
+            saving = true;
+            error.clear();
+            rows_dirty = true;
+            load(options, &sender, true);
+        }
         if restore {
+            rows_dirty = true;
             match recovery::restore(options, &selected) {
                 Ok(Some(_)) => return Ok(()),
                 Ok(None) => {
