@@ -52,10 +52,24 @@ If the pane set changes, the next focus change records a new base layout.
 
 Snapshots describe how to reopen work. They do not save the memory of a running process.
 Claude and Codex conversations can resume through those tools' own commands and saved profiles.
-Snapshots also retain supported model and effort flags, Codex's explicit `--no-daemon`, and the Ollama launcher for Claude.
+Snapshots also retain supported model and effort flags, Codex's explicit `--no-daemon`, and captured external launchers.
 Recovery does not copy the complete process environment.
 Other programs need their saved arguments, folder, and a new process environment.
-That is why command reruns require an explicit selection in the preview.
+The recovery preview lists these actions by window. Restore all reruns every eligible stopped command.
+The terminal command still requires `--rerun PANE` for command reruns.
+
+## How recovery finds the conversation
+
+Claude and Codex hooks report their native conversation ID, process ID, process start time, and tmux pane.
+The reader checks the process start time and its ancestry inside that pane.
+Claude's native session registry provides another source for this information.
+A tmux session name is not an agent conversation ID.
+
+The snapshot saves the matched conversation ID and profile.
+Restore constructs one native resume command from that ID. It does not append resume flags to the saved agent command.
+An original `claude --resume old-id` therefore does not become `claude --resume old-id --resume saved-id`.
+For external launchers, recovery keeps the launcher prefix and replaces the forwarded agent arguments.
+The agent reads its history from its own profile and transcript files.
 
 ## Why a closed program does not stay recoverable
 

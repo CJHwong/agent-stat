@@ -70,32 +70,36 @@ Before native layout changes or pane swaps, hide the sidebar with Ctrl+b, then T
 
 ## Recover saved work
 
-A saved command can repeat its actions. Review its arguments before selecting it.
+Restore all reruns eligible saved commands. Review the action list before restoring.
 
 1. Press Ctrl+b, then `r`, or choose **Recover saved work** from F1.
 2. Check the source session, destination session, and saved window names in the preview.
-3. Review the preview. Supported Claude and Codex conversations use their native resume commands.
-4. To rerun a saved command, press `c` to reach it, then Space to select it. You can also click its checkbox.
-5. Press `r`, or click **Restore**, to create `recovered-<session>`.
+3. Review each pane's action: resume an agent, rerun a command, keep running, or open a shell.
+4. Press `r`, or click **Restore all**, to create `recovered-<session>`.
 
-Press `s` or click **Save current session** to save all current windows and refresh the preview.
+Press `s` or click **Save snapshot** to save all current windows and refresh the preview.
 Saving replaces the latest snapshot for this session. Save before stopping the tmux server.
 The preview shows **Snapshot saved.** after a successful save.
 
 Restore creates a separate session with all saved windows. It keeps their names and pane layouts.
 You cannot select one destination window. Each saved window becomes a window in the recovered session.
 
-Other panes open shells in their saved folders. Commands start unselected.
-Restore requires a resumable conversation or a selected eligible command.
+Restore all includes every eligible stopped conversation and command. Other panes open shells in their saved folders.
+There are no command checkboxes or selection shortcuts in the preview.
 Escape cancels without starting programs. The wheel, arrows, Page Up, and Page Down scroll the preview.
-See [recovery limits](reference.md#recovery-limits) if a command cannot be selected.
+See [recovery limits](reference.md#recovery-limits) if a command cannot be restored.
 See [snapshot behavior](explanation.md#why-a-closed-program-does-not-stay-recoverable) to understand when recovery becomes available.
 
 ## Keep agent launch settings during recovery
 
 Recovery saves each agent's profile, explicit model, and effort setting.
 It also saves an explicit Codex `--no-daemon` flag.
-For Claude started with `ollama launch claude`, recovery uses that launcher and its model.
+Recovery captures external launchers from the agent's ancestors inside its tmux pane.
+A launcher must name the agent in its arguments. A `--` separator identifies forwarded agent arguments when present.
+Recovery keeps the launcher prefix and replaces old resume arguments with the saved conversation ID.
+This supports wrappers without rules for a specific provider or shell alias.
+Aliases expand before the program starts, so recovery saves their effective external launcher, not the alias name.
+Shell-only wrappers that disappear through `exec`, or hide the agent from their arguments, cannot be reconstructed this way.
 Shell aliases do not need to exist in the new tmux server.
 Older snapshots lack these launch settings. Save a new snapshot while the agents run.
 

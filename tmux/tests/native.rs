@@ -977,7 +977,7 @@ fn shared_events_keep_unread_markers_and_unknown_rows_have_no_status() {
 }
 
 #[test]
-fn ollama_recovery_preserves_launcher_model_and_profile() {
+fn wrapped_agent_recovery_preserves_launcher_model_and_profile() {
     let sandbox = Sandbox::new();
     let worker = worker(&sandbox.root);
     let bin = sandbox.root.join("bin");
@@ -985,17 +985,17 @@ fn ollama_recovery_preserves_launcher_model_and_profile() {
     fs::copy(worker, bin.join("claude")).unwrap();
     success(
         Command::new("rustc")
-            .args(["--edition=2024", "tests/fixtures/ollama.rs", "-o"])
-            .arg(bin.join("ollama"))
+            .args(["--edition=2024", "tests/fixtures/launcher.rs", "-o"])
+            .arg(bin.join("relay"))
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .unwrap(),
     );
-    let marker = sandbox.root.join("resumed-ollama");
+    let marker = sandbox.root.join("resumed-wrapper");
     let child_pid = sandbox.root.join("child-pid");
-    let profile = sandbox.root.join("ollama profile");
+    let profile = sandbox.root.join("wrapped profile");
     fs::create_dir(&profile).unwrap();
-    sandbox.start("source", &format!("env CLAUDE_CONFIG_DIR={} TEST_WORKER_OUTPUT={} TEST_CHILD_PID={} {} launch claude --model test-model -- --effort high", quote(profile.to_str().unwrap()), quote(marker.to_str().unwrap()), quote(child_pid.to_str().unwrap()), quote(bin.join("ollama").to_str().unwrap())));
+    sandbox.start("source", &format!("env CLAUDE_CONFIG_DIR={} TEST_WORKER_OUTPUT={} TEST_CHILD_PID={} {} launch claude --model test-model -- --resume original-session --effort high", quote(profile.to_str().unwrap()), quote(marker.to_str().unwrap()), quote(child_pid.to_str().unwrap()), quote(bin.join("relay").to_str().unwrap())));
     sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
     wait_for_file(&marker);
     let pane = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{pane_id}"]);
@@ -1003,14 +1003,17 @@ fn ollama_recovery_preserves_launcher_model_and_profile() {
     let pid: u32 = fs::read_to_string(&child_pid).unwrap().parse().unwrap();
     append_event(
         &event_file(&sandbox),
-        serde_json::json!({"event":"Stop","session":"saved-ollama","agent":"claude","agent_pid":pid,"tmux":pane,"ts":1}),
+        serde_json::json!({"event":"Stop","session":"saved-wrapper","agent":"claude","agent_pid":pid,"tmux":pane,"ts":1}),
     );
     let snapshot: serde_json::Value = serde_json::from_str(&success(
         sandbox.command("source", "snapshot").output().unwrap(),
     ))
     .unwrap();
     let agent = &snapshot["windows"][0]["panes"][0]["agent"];
-    assert_eq!(agent["launch"]["ollama"], true);
+    assert_eq!(
+        agent["launch"]["launcher"][0],
+        bin.join("relay").to_str().unwrap()
+    );
     assert_eq!(agent["launch"]["model"], "test-model");
     assert_eq!(agent["profile"], profile.to_str().unwrap());
     sandbox.tmux(&[
@@ -1031,6 +1034,18 @@ fn ollama_recovery_preserves_launcher_model_and_profile() {
         "TEST_CHILD_PID",
         child_pid.to_str().unwrap(),
     ]);
+    let snapshot_path = fs::read_dir(sandbox.root.join("state/snapshots"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let mut legacy = snapshot;
+    legacy["windows"][0]["panes"][0]["agent"]["launch"]
+        .as_object_mut()
+        .unwrap()
+        .remove("launcher");
+    fs::write(snapshot_path, serde_json::to_vec(&legacy).unwrap()).unwrap();
     sandbox.tmux(&["kill-session", "-t", "source"]);
     fs::remove_file(&marker).unwrap();
     let mut restore = sandbox.command("source", "restore");
@@ -1041,8 +1056,16 @@ fn ollama_recovery_preserves_launcher_model_and_profile() {
     assert_eq!(success(restore.output().unwrap()), "recovered-source");
     wait_for_file(&marker);
     let launched = fs::read_to_string(marker).unwrap();
-    assert!(launched.contains("--model\0test-model\0--resume\0saved-ollama\0--effort\0high\0"));
+    assert!(launched.contains("--model\0test-model\0--resume\0saved-wrapper\0--effort\0high\0"));
     assert!(launched.ends_with(profile.to_str().unwrap()));
+    assert!(!launched.contains("original-session"));
+    assert_eq!(
+        launched
+            .split('\0')
+            .filter(|argument| *argument == "--resume")
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -2394,10 +2417,11 @@ fn recovery_preview_saves_and_refreshes_all_windows() {
 }
 
 #[test]
-fn native_recovery_preview_cancels_fast_and_reruns_only_checked_commands() {
+fn native_recovery_preview_cancels_fast_and_restores_all_commands() {
     let sandbox = Sandbox::new();
     let worker = worker(&sandbox.root);
     let marker = sandbox.root.join("replayed");
+    let second_marker = sandbox.root.join("replayed-second");
     success(
         Command::new(binary())
             .args([
@@ -2435,9 +2459,27 @@ fn native_recovery_preview_cancels_fast_and_reruns_only_checked_commands() {
         "source",
         "#{@window_sidebar_pane}",
     ]);
+    let second = sandbox.tmux(&[
+        "split-window",
+        "-d",
+        "-h",
+        "-t",
+        &content,
+        "-P",
+        "-F",
+        "#{pane_id}",
+        &format!(
+            "{} {} 'second command'",
+            quote(worker.to_str().unwrap()),
+            quote(second_marker.to_str().unwrap())
+        ),
+    ]);
+    wait_for_file(&second_marker);
     success(sandbox.command("source", "snapshot").output().unwrap());
     sandbox.tmux(&["respawn-pane", "-k", "-t", &content, "sleep 120"]);
     fs::remove_file(&marker).unwrap();
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &second, "sleep 120"]);
+    fs::remove_file(&second_marker).unwrap();
     let mut client = Client::attach(&sandbox, "source");
     client.wait("sidebar frame", || {
         sandbox
@@ -2489,9 +2531,17 @@ fn native_recovery_preview_cancels_fast_and_reruns_only_checked_commands() {
     assert!(!marker.exists());
     client.send(b"\x02r");
     client.wait("recovery process starts", recovery_running);
-    client.expect("Rerun saved command");
-    client.send(b" r");
-    client.wait("explicit saved command rerun", || marker.exists());
+    client.expect("[r] Restore all");
+    assert!(!second_marker.exists());
+    client.send(b"r");
+    client.wait("all saved commands rerun", || {
+        marker.exists() && second_marker.exists()
+    });
+    assert!(
+        fs::read_to_string(&second_marker)
+            .unwrap()
+            .contains("second command\0")
+    );
     let result = String::from_utf8(fs::read(&marker).unwrap()).unwrap();
     assert!(result.contains("two words\0"));
     assert_eq!(

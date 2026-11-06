@@ -55,6 +55,7 @@ pub struct Plan {
     pub active: HashSet<String>,
     pub eligible: Vec<String>,
     pub commands: Vec<String>,
+    pub running_commands: HashSet<String>,
 }
 
 pub fn namespace(options: &Options) -> io::Result<String> {
@@ -172,8 +173,13 @@ fn agents(
         agent.profile = commands::profile(agent.pid, &agent.agent)?;
         result.insert(pane, agent);
     }
-    for agent in result.values_mut() {
-        agent.launch = commands::launch(agent.pid, processes);
+    for (pane, agent) in &mut result {
+        let root = entries
+            .iter()
+            .find(|entry| entry.pane == *pane)
+            .map(|entry| entry.root_pid)
+            .unwrap_or(agent.pid);
+        agent.launch = commands::launch(agent.pid, root, &agent.agent, processes);
     }
     Ok(result)
 }
@@ -357,28 +363,38 @@ pub fn resume(agent: &Agent) -> Option<String> {
     if !agent.profile.is_empty() {
         arguments.push(format!("{variable}={}", agent.profile));
     }
-    if agent.agent == "codex" {
-        arguments.push("codex".into());
-        if agent.launch.no_daemon {
-            arguments.push("--no-daemon".into());
-        }
-        arguments.extend(["resume".into(), agent.session_id.clone()]);
-        return Some(rt::shell(&arguments));
-    }
-    if agent.launch.ollama {
-        arguments.extend(["ollama".into(), "launch".into(), "claude".into()]);
-        if !agent.launch.model.is_empty() {
-            arguments.extend(["--model".into(), agent.launch.model.clone()]);
-        }
-        arguments.push("--".into());
+    if agent.launch.launcher.is_empty() {
+        arguments.push(agent.agent.clone());
     } else {
-        arguments.push("claude".into());
+        arguments.extend(agent.launch.launcher.iter().cloned());
     }
-    arguments.extend(["--resume".into(), agent.session_id.clone()]);
-    if !agent.launch.ollama && !agent.launch.model.is_empty() {
+    if agent.agent == "codex" && agent.launch.no_daemon {
+        arguments.push("--no-daemon".into());
+    }
+    arguments.extend([
+        if agent.agent == "claude" {
+            "--resume".into()
+        } else {
+            "resume".into()
+        },
+        agent.session_id.clone(),
+    ]);
+    if !agent.launch.model.is_empty()
+        && !agent
+            .launch
+            .launcher
+            .iter()
+            .any(|argument| argument == "--model" || argument.starts_with("--model="))
+    {
         arguments.extend(["--model".into(), agent.launch.model.clone()]);
     }
-    if !agent.launch.effort.is_empty() {
+    if !agent.launch.effort.is_empty()
+        && !agent
+            .launch
+            .launcher
+            .iter()
+            .any(|argument| argument == "--effort" || argument.starts_with("--effort="))
+    {
         arguments.extend(["--effort".into(), agent.launch.effort.clone()]);
     }
     Some(rt::shell(&arguments))
@@ -423,7 +439,7 @@ fn publish_availability(
     Ok(())
 }
 fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> {
-    let snapshot: Snapshot =
+    let mut snapshot: Snapshot =
         serde_json::from_slice(&fs::read(path(options)?).map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
                 io::Error::other("No saved recovery snapshot exists for this session.")
@@ -431,6 +447,17 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
                 error
             }
         })?)?;
+    for pane in snapshot
+        .windows
+        .iter_mut()
+        .flat_map(|window| &mut window.panes)
+    {
+        if pane.agent.launch.launcher.is_empty() {
+            pane.agent.launch.launcher =
+                commands::launcher_prefix(&pane.command.command_argv, &pane.agent.agent)
+                    .unwrap_or_default();
+        }
+    }
     if snapshot.version != 1 || snapshot.windows.is_empty() {
         return Err(io::Error::other("Unsupported or empty recovery snapshot"));
     }
@@ -457,6 +484,7 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
         .collect::<HashMap<_, _>>();
     let mut eligible = Vec::new();
     let mut commands = Vec::new();
+    let mut running_commands = HashSet::new();
     for pane in snapshot.windows.iter().flat_map(|window| &window.panes) {
         if !active.contains(&pane.agent.session_id) && resume(&pane.agent).is_some() {
             eligible.push(pane.pane_id.clone());
@@ -471,6 +499,9 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
                         &processes,
                     )
             });
+        if running && can_replay(pane) {
+            running_commands.insert(pane.pane_id.clone());
+        }
         if can_replay(pane) && !running {
             commands.push(pane.pane_id.clone());
         }
@@ -480,6 +511,7 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
         active,
         eligible,
         commands,
+        running_commands,
     })
 }
 pub fn restore(options: &Options, selected: &HashSet<String>) -> io::Result<Option<String>> {
@@ -731,10 +763,20 @@ mod tests {
             resume(&agent).unwrap(),
             "'env' 'claude' '--resume' 'saved-session' '--model' 'local-model:latest' '--effort' 'high'"
         );
-        agent.launch.ollama = true;
+        agent.launch.launcher = [
+            "relay",
+            "launch",
+            "claude",
+            "--model",
+            "local-model:latest",
+            "--",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
         assert_eq!(
             resume(&agent).unwrap(),
-            "'env' 'ollama' 'launch' 'claude' '--model' 'local-model:latest' '--' '--resume' 'saved-session' '--effort' 'high'"
+            "'env' 'relay' 'launch' 'claude' '--model' 'local-model:latest' '--' '--resume' 'saved-session' '--effort' 'high'"
         );
     }
     #[test]

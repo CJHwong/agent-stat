@@ -18,7 +18,7 @@ pub struct Capture {
 #[serde(default)]
 pub struct Launch {
     pub no_daemon: bool,
-    pub ollama: bool,
+    pub launcher: Vec<String>,
     pub model: String,
     pub effort: String,
 }
@@ -34,7 +34,27 @@ fn option(arguments: &[String], name: &str) -> String {
     }
     String::new()
 }
-pub fn launch(pid: u32, processes: &HashMap<u32, Process>) -> Launch {
+pub fn launcher_prefix(arguments: &[String], agent: &str) -> Option<Vec<String>> {
+    let agent_index = arguments
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(index, argument)| {
+            let previous = &arguments[index - 1];
+            let option_value = previous != "--" && previous.starts_with('-');
+            (!option_value && Path::new(argument).file_name() == Some(std::ffi::OsStr::new(agent)))
+                .then_some(index)
+        })?;
+    let start = arguments
+        .iter()
+        .enumerate()
+        .skip(agent_index + 1)
+        .find_map(|(index, argument)| (argument == "--").then_some(index + 1))
+        .unwrap_or(agent_index + 1);
+    let prefix = arguments[..start].to_vec();
+    replayable(&prefix).then_some(prefix)
+}
+pub fn launch(pid: u32, root: u32, agent: &str, processes: &HashMap<u32, Process>) -> Launch {
     let arguments = arguments(pid).unwrap_or_default();
     let mut launch = Launch {
         no_daemon: arguments.iter().any(|argument| argument == "--no-daemon"),
@@ -44,26 +64,17 @@ pub fn launch(pid: u32, processes: &HashMap<u32, Process>) -> Launch {
     };
     let mut parent = pid;
     for _ in 0..128 {
+        if parent == root {
+            break;
+        }
         let Some(process) = processes.get(&parent) else {
             break;
         };
         parent = process.parent;
         let arguments = self::arguments(parent).unwrap_or_default();
-        let executable = arguments
-            .first()
-            .and_then(|argument| Path::new(argument).file_name());
-        if executable != Some(std::ffi::OsStr::new("ollama"))
-            || arguments.get(1).map(String::as_str) != Some("launch")
-            || arguments.get(2).map(String::as_str) != Some("claude")
-        {
-            continue;
+        if let Some(prefix) = launcher_prefix(&arguments, agent) {
+            launch.launcher = prefix;
         }
-        launch.ollama = true;
-        let model = option(&arguments, "--model");
-        if !model.is_empty() {
-            launch.model = model;
-        }
-        break;
     }
     launch
 }
@@ -269,6 +280,48 @@ pub fn capture(root: u32, processes: &HashMap<u32, Process>) -> Capture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn generic_launchers_drop_existing_resume_arguments() {
+        let arguments = [
+            "relay",
+            "launch",
+            "claude",
+            "--model=local-model",
+            "--",
+            "--resume",
+            "old-session",
+            "--effort",
+            "high",
+        ]
+        .map(String::from);
+        assert_eq!(
+            launcher_prefix(&arguments, "claude").unwrap(),
+            arguments[..5]
+        );
+        let arguments = ["relay", "claude", "--resume", "old-session"].map(String::from);
+        assert_eq!(
+            launcher_prefix(&arguments, "claude").unwrap(),
+            arguments[..2]
+        );
+        let arguments = [
+            "relay",
+            "--profile",
+            "claude",
+            "--",
+            "claude",
+            "--resume",
+            "old-session",
+        ]
+        .map(String::from);
+        assert_eq!(
+            launcher_prefix(&arguments, "claude").unwrap(),
+            arguments[..5]
+        );
+        let shell = ["zsh", "-c", "relay claude --resume old-session"].map(String::from);
+        assert!(launcher_prefix(&shell, "claude").is_none());
+        let secret = ["relay", "--token", "private", "claude"].map(String::from);
+        assert!(launcher_prefix(&secret, "claude").is_none());
+    }
     #[test]
     fn internal_startup_barriers_are_not_replayed() {
         let arguments = ["tmux", "wait-for", "agent-stat-new-1-2"]

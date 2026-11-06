@@ -30,7 +30,7 @@ If you use another prefix, substitute it for Ctrl+b.
 | Ctrl+b f | Show the full title, folder, and command. |
 | Ctrl+b r | Open the recovery preview. |
 | `s` in recovery | Save all current windows and replace this session's latest snapshot. |
-| `c` in recovery | Move to the next saved command. Space selects it for rerun. |
+| `r` in recovery | Restore all eligible saved conversations and commands. |
 | Ctrl+b Tab | Toggle the sidebar. |
 | Ctrl+b z | Toggle full zoom for the content pane. |
 | Ctrl+b ? | Show shortcuts. Escape or `q` closes the list. |
@@ -104,7 +104,7 @@ The sidebar shows Recover only when saved work is available; F1 and Ctrl+b r rem
 Restore checks running processes again and skips conversations already running in the source session.
 Claude's native session registry can provide recovery metadata without supplying status dots.
 
-Commands cannot be selected when they remain running, contain masked credentials, or represent interactive shells.
+Restore all skips commands that remain running, contain masked credentials, or represent interactive shells.
 Snapshots without exact arguments, a process identifier, or a process start time cannot supply a rerunnable command.
 Argument boundaries preserve spaces, empty values, and shell punctuation.
 Rerun uses the saved folder and the new terminal's environment.
