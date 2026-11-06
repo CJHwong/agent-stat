@@ -10,7 +10,8 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     fs, io,
-    path::PathBuf,
+    io::BufRead,
+    path::{Path, PathBuf},
     thread,
     time::{Duration, Instant},
 };
@@ -56,6 +57,7 @@ pub struct Plan {
     pub eligible: Vec<String>,
     pub commands: Vec<String>,
     pub running_commands: HashSet<String>,
+    pub destination: String,
 }
 
 pub fn namespace(options: &Options) -> io::Result<String> {
@@ -161,6 +163,110 @@ fn registry(
     }
     Ok(result)
 }
+fn transcript_matches(path: &Path, identifier: &str) -> io::Result<bool> {
+    let mut first = String::new();
+    io::BufReader::new(fs::File::open(path)?).read_line(&mut first)?;
+    let record = match serde_json::from_str::<serde_json::Value>(&first) {
+        Ok(record) => record,
+        Err(_) => return Ok(false),
+    };
+    Ok(record["type"] == "session_meta" && record["payload"]["id"] == identifier)
+}
+fn transcript_exists(profile: &Path, identifier: &str) -> io::Result<bool> {
+    let suffix = format!("{identifier}.jsonl");
+    let mut pending = vec![
+        (profile.join("sessions"), 0),
+        (profile.join("archived_sessions"), 0),
+    ];
+    while let Some((directory, depth)) = pending.pop() {
+        let entries = match fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        for entry in entries {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_file()
+                && entry.file_name().to_string_lossy().ends_with(&suffix)
+                && transcript_matches(&entry.path(), identifier)?
+            {
+                return Ok(true);
+            }
+            if depth < 4 && kind.is_dir() {
+                pending.push((entry.path(), depth + 1));
+            }
+        }
+    }
+    Ok(false)
+}
+fn codex_from_arguments(
+    entry: &Entry,
+    processes: &HashMap<u32, Process>,
+) -> io::Result<Option<Agent>> {
+    let pid = commands::foreground(entry.root_pid, processes);
+    let arguments = commands::arguments(pid).unwrap_or_default();
+    let Some(identifier) = commands::codex_resume_identifier(&arguments) else {
+        return Ok(None);
+    };
+    let profile = commands::profile(pid, "codex")?;
+    if !transcript_exists(Path::new(&profile), &identifier)? {
+        return Ok(None);
+    }
+    Ok(Some(Agent {
+        agent: "codex".into(),
+        session_id: identifier,
+        profile,
+        pid,
+        start: processes
+            .get(&pid)
+            .map(|process| process.started.clone())
+            .unwrap_or_default(),
+        state: "idle".into(),
+        cwd: entry.cwd.clone(),
+        ..Agent::default()
+    }))
+}
+fn recover_saved_identifier(pane: &mut Pane) -> io::Result<()> {
+    if !pane.agent.session_id.is_empty() {
+        return Ok(());
+    }
+    let identifier = commands::codex_resume_identifier(&pane.command.command_argv)
+        .or_else(|| commands::saved_codex_identifier(&pane.command.command));
+    let Some(identifier) = identifier else {
+        return Ok(());
+    };
+    let profile = if pane.agent.profile.is_empty() {
+        rt::home()?.join(".codex")
+    } else {
+        PathBuf::from(&pane.agent.profile)
+    };
+    if !transcript_exists(&profile, &identifier)? {
+        return Ok(());
+    }
+    pane.agent.agent = "codex".into();
+    pane.agent.session_id = identifier;
+    pane.agent.profile = profile.to_string_lossy().into_owned();
+    pane.agent.cwd = pane.cwd.clone();
+    Ok(())
+}
+fn destination(options: &Options, source: &str) -> io::Result<String> {
+    let names = model::tmux(&options.socket, &["list-sessions", "-F", "#{session_name}"])?;
+    let names: HashSet<_> = names.lines().collect();
+    let base = format!("recovered-{source}");
+    if !names.contains(base.as_str()) {
+        return Ok(base);
+    }
+    for suffix in 2..10000 {
+        let candidate = format!("{base}-{suffix}");
+        if !names.contains(candidate.as_str()) {
+            return Ok(candidate);
+        }
+    }
+    Err(io::Error::other(
+        "No unused recovery session name is available",
+    ))
+}
 fn agents(
     options: &Options,
     reader: &mut Reader,
@@ -172,6 +278,14 @@ fn agents(
     for (pane, mut agent) in reader.agents(entries, processes) {
         agent.profile = commands::profile(agent.pid, &agent.agent)?;
         result.insert(pane, agent);
+    }
+    for entry in entries {
+        if result.contains_key(&entry.pane) {
+            continue;
+        }
+        if let Some(agent) = codex_from_arguments(entry, processes)? {
+            result.insert(entry.pane.clone(), agent);
+        }
     }
     for (pane, agent) in &mut result {
         let root = entries
@@ -283,12 +397,38 @@ fn recoverable(snapshot: &Snapshot) -> bool {
         .flat_map(|window| &window.panes)
         .any(|pane| !pane.agent.session_id.is_empty() || can_replay(pane))
 }
-pub fn save(options: &Options, reader: &mut Reader, force: bool) -> io::Result<Snapshot> {
+fn session_identity(options: &Options) -> io::Result<String> {
+    model::tmux(
+        &options.socket,
+        &[
+            "display-message",
+            "-p",
+            "-t",
+            &options.session,
+            "#{pid}:#{session_id}:#{session_created}",
+        ],
+    )
+}
+fn save_for_session(
+    options: &Options,
+    reader: &mut Reader,
+    force: bool,
+    identity: &str,
+) -> io::Result<Snapshot> {
     let snapshot = capture(options, reader)?;
+    if session_identity(options)? != identity {
+        return Err(io::Error::other(
+            "Tmux session changed during snapshot capture",
+        ));
+    }
     if force || recoverable(&snapshot) {
         rt::atomic_write(&path(options)?, &serde_json::to_vec(&snapshot)?)?;
     }
     Ok(snapshot)
+}
+pub fn save(options: &Options, reader: &mut Reader, force: bool) -> io::Result<Snapshot> {
+    let identity = session_identity(options)?;
+    save_for_session(options, reader, force, &identity)
 }
 static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 pub fn running() -> bool {
@@ -314,16 +454,17 @@ pub fn monitor(options: &Options) -> io::Result<()> {
             rt::log(&format!("Shortcut observer: {error}"));
         }
     });
+    let identity = session_identity(options)?;
     let mut reader = Reader::new(options.event_root.clone(), options.host.clone());
     let mut seen = false;
     let mut availability = None;
-    while running() && rt::exists(options) {
+    while running() && session_identity(options).ok().as_deref() == Some(identity.as_str()) {
         if crate::shared::enabled(options)? {
             if let Err(error) = crate::shared::start(options) {
                 rt::log(&format!("Shared service: {error}"));
             }
         }
-        match save(options, &mut reader, seen) {
+        match save_for_session(options, &mut reader, seen, &identity) {
             Ok(snapshot) => seen |= recoverable(&snapshot),
             Err(error) => rt::log(&format!("Snapshot: {error}")),
         }
@@ -332,7 +473,10 @@ pub fn monitor(options: &Options) -> io::Result<()> {
         }
         let next = Instant::now() + Duration::from_secs(10);
         // The control client detects session closure. Poll only after its observer exits.
-        while Instant::now() < next && running() && (!observer.is_finished() || rt::exists(options))
+        while Instant::now() < next
+            && running()
+            && (!observer.is_finished()
+                || session_identity(options).ok().as_deref() == Some(identity.as_str()))
         {
             thread::sleep(Duration::from_millis(100));
         }
@@ -452,6 +596,7 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
         .iter_mut()
         .flat_map(|window| &mut window.panes)
     {
+        recover_saved_identifier(pane)?;
         if pane.agent.launch.launcher.is_empty() {
             pane.agent.launch.launcher =
                 commands::launcher_prefix(&pane.command.command_argv, &pane.agent.agent)
@@ -506,12 +651,14 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
             commands.push(pane.pane_id.clone());
         }
     }
+    let destination = destination(options, &snapshot.session)?;
     Ok(Plan {
         snapshot,
         active,
         eligible,
         commands,
         running_commands,
+        destination,
     })
 }
 pub fn restore(options: &Options, selected: &HashSet<String>) -> io::Result<Option<String>> {
@@ -524,14 +671,9 @@ pub fn restore(options: &Options, selected: &HashSet<String>) -> io::Result<Opti
     if plan.eligible.is_empty() && selected.is_empty() {
         return Ok(None);
     }
-    let recovered = format!("recovered-{}", plan.snapshot.session);
+    let recovered = plan.destination.clone();
     let mut target = options.clone();
     target.session = recovered.clone();
-    if rt::exists(&target) {
-        return Err(io::Error::other(format!(
-            "The recovery session already exists: {recovered}"
-        )));
-    }
     let cwd = &plan.snapshot.windows[0]
         .panes
         .first()
@@ -738,6 +880,44 @@ fn restore_pane(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn saved_codex_identity_requires_matching_transcript_metadata() {
+        let profile = std::env::temp_dir().join(format!("recovery-identity-{}", rt::stamp()));
+        fs::create_dir_all(profile.join("sessions")).unwrap();
+        let identifier = "00000000-0000-7000-8000-000000000001";
+        let transcript = profile
+            .join("sessions")
+            .join(format!("rollout-{identifier}.jsonl"));
+        fs::write(
+            &transcript,
+            r#"{"type":"session_meta","payload":{"id":"another-session"}}"#,
+        )
+        .unwrap();
+        let mut pane = Pane {
+            agent: Agent {
+                profile: profile.to_string_lossy().into_owned(),
+                ..Default::default()
+            },
+            command: Capture {
+                command: format!("codex resume {identifier}"),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        recover_saved_identifier(&mut pane).unwrap();
+        assert!(pane.agent.session_id.is_empty());
+        fs::write(
+            &transcript,
+            serde_json::to_vec(
+                &serde_json::json!({"type":"session_meta","payload":{"id":identifier}}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        recover_saved_identifier(&mut pane).unwrap();
+        assert_eq!(pane.agent.session_id, identifier);
+        fs::remove_dir_all(profile).unwrap();
+    }
     #[test]
     fn resume_preserves_agent_launch_options() {
         let mut agent = Agent {

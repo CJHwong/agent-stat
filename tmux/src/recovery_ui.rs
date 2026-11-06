@@ -24,7 +24,7 @@ fn count(amount: usize, noun: &str) -> String {
 fn lines(plan: &Plan, width: usize) -> Vec<String> {
     let mut rows = vec![
         format!("Source session: {}", plan.snapshot.session),
-        format!("Restore into: recovered-{}", plan.snapshot.session),
+        format!("Restore into: {}", plan.destination),
         format!(
             "{} to restore ({} to resume, {} to rerun)",
             count(plan.snapshot.windows.len(), "window"),
@@ -55,6 +55,10 @@ fn pane_rows(rows: &mut Vec<String>, pane: &recovery::Pane, plan: &Plan, width: 
         || plan.running_commands.contains(&pane.pane_id)
     {
         "Keep running".into()
+    } else if pane.agent.session_id.is_empty()
+        && crate::commands::is_codex_command(&pane.command.command)
+    {
+        "Cannot resume Codex (conversation ID missing)".into()
     } else if recovery::resume(&pane.agent).is_some() {
         let name = match pane.agent.agent.as_str() {
             "claude" => "Claude",
@@ -302,6 +306,7 @@ mod tests {
             eligible: vec!["%1".into()],
             commands: vec!["%2".into()],
             running_commands: HashSet::from(["%3".into()]),
+            destination: "recovered-work".into(),
         };
         let preview = lines(&plan, 100).join("\n");
         assert!(

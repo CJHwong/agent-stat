@@ -1069,6 +1069,97 @@ fn wrapped_agent_recovery_preserves_launcher_model_and_profile() {
 }
 
 #[test]
+fn codex_resume_without_hooks_and_old_snapshot_restore_to_a_fresh_session() {
+    let sandbox = Sandbox::new();
+    let worker = worker(&sandbox.root);
+    let bin = sandbox.root.join("bin");
+    fs::create_dir(&bin).unwrap();
+    fs::copy(worker, bin.join("codex")).unwrap();
+    let profile = sandbox.root.join(".codex");
+    let sessions = profile.join("sessions/2026/11/06");
+    fs::create_dir_all(&sessions).unwrap();
+    let identity = "00000000-0000-7000-8000-000000000001";
+    fs::write(
+        sessions.join(format!("rollout-{identity}.jsonl")),
+        serde_json::to_vec(&serde_json::json!({"type":"session_meta","payload":{"id":identity}}))
+            .unwrap(),
+    )
+    .unwrap();
+    let marker = sandbox.root.join("resumed-codex-without-hooks");
+    sandbox.start(
+        "source",
+        &format!(
+            "env CODEX_HOME={} TEST_WORKER_OUTPUT={} {} resume {identity}",
+            quote(profile.to_str().unwrap()),
+            quote(marker.to_str().unwrap()),
+            quote(bin.join("codex").to_str().unwrap())
+        ),
+    );
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    wait_for_file(&marker);
+    let snapshot: serde_json::Value = serde_json::from_str(&success(
+        sandbox.command("source", "snapshot").output().unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(
+        snapshot["windows"][0]["panes"][0]["agent"]["session_id"],
+        identity
+    );
+    let path = fs::read_dir(sandbox.root.join("state/snapshots"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let mut old = snapshot;
+    old["windows"][0]["panes"][0]["agent"] = serde_json::json!({});
+    old["windows"][0]["panes"][0]["command_argv"] = serde_json::json!([]);
+    fs::write(path, serde_json::to_vec(&old).unwrap()).unwrap();
+    sandbox.tmux(&[
+        "set-environment",
+        "-g",
+        "PATH",
+        &format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+    ]);
+    sandbox.tmux(&[
+        "set-environment",
+        "-g",
+        "TEST_WORKER_OUTPUT",
+        marker.to_str().unwrap(),
+    ]);
+    sandbox.tmux(&["kill-session", "-t", "source"]);
+    fs::remove_file(&marker).unwrap();
+    sandbox.tmux(&["new-session", "-d", "-s", "recovered-source", "sleep 120"]);
+    let original = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        "recovered-source",
+        "#{pane_pid}",
+    ]);
+    let mut restore = sandbox.command("source", "restore");
+    restore.env(
+        "PATH",
+        format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+    );
+    assert_eq!(success(restore.output().unwrap()), "recovered-source-2");
+    wait_for_file(&marker);
+    let launched = fs::read_to_string(marker).unwrap();
+    assert!(launched.contains(&format!("resume\0{identity}\0")));
+    assert!(!launched.contains("--no-daemon"));
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "recovered-source",
+            "#{pane_pid}"
+        ]),
+        original
+    );
+}
+
+#[test]
 fn codex_recovery_preserves_no_daemon() {
     let sandbox = Sandbox::new();
     let worker = worker(&sandbox.root);
@@ -2684,6 +2775,59 @@ fn cached_hook_guards_are_empty_and_disappear_after_the_old_caller_exits() {
 }
 
 #[test]
+fn old_monitor_exits_when_the_socket_and_session_name_are_reused() {
+    let sandbox = Sandbox::new();
+    let worker = worker(&sandbox.root);
+    let marker = sandbox.root.join("work-before-restart");
+    sandbox.start(
+        "source",
+        &format!(
+            "{} {}",
+            quote(worker.to_str().unwrap()),
+            quote(marker.to_str().unwrap())
+        ),
+    );
+    wait_for_file(&marker);
+    let mut monitor = sandbox
+        .command("source", "monitor")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let snapshot_directory = sandbox.root.join("state/snapshots");
+    let until = std::time::Instant::now() + Duration::from_secs(4);
+    while !snapshot_directory.is_dir() && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let snapshot = fs::read_dir(snapshot_directory)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let saved = fs::read(&snapshot).unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(unsafe { libc::kill(monitor.id() as i32, libc::SIGSTOP) }, 0);
+    sandbox.tmux(&["kill-server"]);
+    sandbox.start("source", "/bin/sh");
+    assert_eq!(unsafe { libc::kill(monitor.id() as i32, libc::SIGCONT) }, 0);
+    let until = std::time::Instant::now() + Duration::from_secs(4);
+    while monitor.try_wait().unwrap().is_none() && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let exited = monitor.try_wait().unwrap().is_some();
+    if !exited {
+        monitor.kill().unwrap();
+        monitor.wait().unwrap();
+    }
+    assert!(exited, "The old monitor adopted the restarted server");
+    assert!(
+        fs::read(snapshot).unwrap() == saved,
+        "The old monitor replaced the saved work"
+    );
+}
+
+#[test]
 fn server_restart_keeps_recovery_while_the_startup_helper_runs() {
     use std::os::fd::AsRawFd;
     let sandbox = Sandbox::new();
@@ -2856,7 +3000,7 @@ fn monitor_polling(control: bool) {
     } else {
         "if [ \"$3\" = -C ]; then exit 1; fi\n"
     };
-    fs::write(&wrapper, format!("#!/bin/sh\n{fail_control}if [ \"$3\" = has-session ]; then printf 'poll\\n' >> {}; fi\nexec {} \"$@\"\n", quote(log.to_str().unwrap()), quote(&real_tmux))).unwrap();
+    fs::write(&wrapper, format!("#!/bin/sh\n{fail_control}if [ \"$3\" = has-session ] || [ \"${{7-}}\" = '#{{pid}}:#{{session_id}}:#{{session_created}}' ]; then printf 'poll\\n' >> {}; fi\nexec {} \"$@\"\n", quote(log.to_str().unwrap()), quote(&real_tmux))).unwrap();
     fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
     let mut monitor = sandbox
         .command("monitor", "monitor")

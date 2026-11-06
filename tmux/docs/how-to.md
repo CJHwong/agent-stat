@@ -82,6 +82,8 @@ Saving replaces the latest snapshot for this session. Save before stopping the t
 The preview shows **Snapshot saved.** after a successful save.
 
 Restore creates a separate session with all saved windows. It keeps their names and pane layouts.
+If `recovered-<session>` exists, Restore uses the next unused suffix, such as `recovered-<session>-2`.
+The preview shows the chosen destination. Existing recovery sessions stay in place.
 You cannot select one destination window. Each saved window becomes a window in the recovered session.
 
 Restore all includes every eligible stopped conversation and command. Other panes open shells in their saved folders.
@@ -120,7 +122,12 @@ You can also use `codex --no-daemon` or `codex --no-daemon resume <session-id>` 
 
 Codex's shared daemon can report a different client's pane in hooks.
 Recovery rejects that process association instead of guessing which conversation belongs to a pane.
-A snapshot without a conversation ID cannot resume that conversation.
+When hooks do not identify a running `codex resume <id>` command, recovery checks that explicit ID against its profile's transcript metadata.
+This fallback keeps the existing launch mode. It does not add `--no-daemon`.
+Recovery can also repair older snapshots that retain an explicit ID in their saved Codex command.
+An ID from `--last`, the conversation picker, or a fresh `codex` command cannot supply this fallback.
+The preview marks Codex panes with no verified ID instead of claiming to resume them.
+A snapshot without a verified conversation ID cannot resume that conversation.
 See the [Codex hook issue](https://github.com/openai/codex/issues/48500).
 
 ## Enable agent status dots

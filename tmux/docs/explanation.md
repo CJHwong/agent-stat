@@ -65,6 +65,11 @@ The reader checks the process start time and its ancestry inside that pane.
 Claude's native session registry provides another source for this information.
 A tmux session name is not an agent conversation ID.
 
+If hooks do not match, an explicit `codex resume <id>` supplies another source.
+Recovery requires a transcript file in that profile whose `session_meta` record contains the same ID.
+It never guesses the ID from the most recent transcript or from `--last`.
+This fallback identifies the launch conversation. Working hooks are needed to follow conversation switches inside Codex.
+
 The snapshot saves the matched conversation ID and profile.
 Restore constructs one native resume command from that ID. It does not append resume flags to the saved agent command.
 An original `claude --resume old-id` therefore does not become `claude --resume old-id --resume saved-id`.
@@ -78,7 +83,9 @@ A fresh empty shell after a restart does not erase the last recoverable snapshot
 Internal sidebar helpers do not count as recoverable work during startup.
 Once the monitor sees recoverable work, later snapshots follow the session's current state, including deliberate closures.
 A closed window therefore disappears from later snapshots. Recovery is a recent session snapshot, not an archive of every closed program.
-Tests stop and restart isolated tmux servers. They check snapshot preservation while a startup helper runs.
+Each monitor keeps the original server and session identity. It exits if a restarted server reuses the socket and session name.
+The writer checks this identity again before saving. An old monitor cannot replace the restart snapshot with an empty shell.
+Tests stop and restart isolated tmux servers. They check both monitor identity and snapshot preservation while a startup helper runs.
 
 ## Why an extra tmux client appears
 
