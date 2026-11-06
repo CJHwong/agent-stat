@@ -40,7 +40,8 @@ See the [renderer measurements](shared-render-experiment.md) for measured memory
 
 A shell can print its prompt before tmux finishes adding the sidebar.
 A later resize can leave repeated prompts. The shell launcher prepares the layout before starting the login shell.
-It also sets a new split's terminal dimensions before that shell prints.
+It sets the terminal dimensions before each login shell starts, including new windows and splits.
+tmux can defer the terminal resize after it updates the layout. Setting the terminal size prevents the shell from using stale dimensions.
 Existing custom `default-command` settings take priority.
 
 The layout code prepares inactive windows before selection when window sizing is automatic.

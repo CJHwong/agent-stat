@@ -40,9 +40,9 @@ pub fn shell(options: &Options) -> io::Result<()> {
         if let Err(error) = crate::focus::run(options, false) {
             rt::log(&format!("Shell focus layout: {error}"));
         }
-        if let Err(error) = size_shell(options, pane) {
-            rt::log(&format!("Shell terminal size: {error}"));
-        }
+    }
+    if let Err(error) = size_shell(options, pane) {
+        rt::log(&format!("Shell terminal size: {error}"));
     }
     Err(Command::new(settings[0]).arg("-l").exec())
 }
