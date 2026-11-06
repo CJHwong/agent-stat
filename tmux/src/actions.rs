@@ -491,6 +491,7 @@ pub fn ensure(options: &Options) -> io::Result<()> {
             (values.len() == 3 && values[0] == window && values[2] == "1")
                 .then(|| values[1].to_owned())
         });
+        let created = found.is_none();
         let pane = if let Some(pane) = found {
             pane
         } else {
@@ -550,6 +551,9 @@ pub fn ensure(options: &Options) -> io::Result<()> {
             &options.socket,
             &["set-option", "-p", "-t", &pane, "pane-border-format", ""],
         )?;
+        if created {
+            crate::focus::refresh_styles(options)?;
+        }
     }
     Ok(())
 }
@@ -657,6 +661,17 @@ fn sidebars(options: &Options, action: &str) -> io::Result<()> {
                 model::tmux(&options.socket, &["kill-pane", "-t", pane])?;
             }
         }
+        let windows = model::tmux(
+            &options.socket,
+            &["list-windows", "-t", &options.session, "-F", "#{window_id}"],
+        )?;
+        for window in windows.lines() {
+            model::tmux(
+                &options.socket,
+                &["set-option", "-w", "-t", window, "@window_sidebar_pane", ""],
+            )?;
+        }
+        crate::focus::refresh_styles(options)?;
         return Ok(());
     }
     let initialized = field(options, &options.session, "#{@window_sidebar_initialized}")?;

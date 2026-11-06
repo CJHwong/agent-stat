@@ -38,6 +38,16 @@ fn setting(arguments: &mut Vec<String>, window: &str, name: &str, value: &str) {
     arguments.extend(["set-option", "-w", "-t", window, name, value].map(String::from));
 }
 
+pub fn refresh_styles(options: &Options) -> io::Result<()> {
+    let style = model::tmux(&options.socket, &["show-option", "-gqv", "window-style"])?;
+    // tmux caches formats in pane styles until a style option changes.
+    model::tmux(
+        &options.socket,
+        &["set-option", "-g", "window-style", &style],
+    )?;
+    Ok(())
+}
+
 pub fn run(options: &Options, toggle: bool) -> io::Result<()> {
     let target = options.pane.as_deref().unwrap_or(&options.session);
     let _lock = rt::lock(&rt::state_root()?.join("layout.lock"), false)?;
@@ -96,6 +106,9 @@ pub fn run(options: &Options, toggle: bool) -> io::Result<()> {
         if !arguments.is_empty() {
             rt::call(options, arguments)?;
         }
+        if toggle {
+            refresh_styles(options)?;
+        }
         return Ok(());
     }
     if !enabled {
@@ -123,6 +136,9 @@ pub fn run(options: &Options, toggle: bool) -> io::Result<()> {
     if !arguments.is_empty() {
         keep_sidebar(&mut arguments, &panes);
         rt::call(options, arguments)?;
+    }
+    if toggle {
+        refresh_styles(options)?;
     }
     Ok(())
 }

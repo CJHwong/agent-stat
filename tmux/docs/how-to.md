@@ -65,6 +65,7 @@ Use Ctrl+b, then `f`, to view the full title, folder, and command.
 3. For full zoom, press Ctrl+b, then `z`. Repeat to return to the split view.
 
 Turn auto zoom off before setting manual pane sizes. Drag a content border to resize panes.
+On tmux 3.8 or later, auto zoom also dims inactive content panes. Turn it off to restore normal brightness.
 Before native layout changes or pane swaps, hide the sidebar with Ctrl+b, then Tab. Show it again afterward.
 
 ## Recover saved work

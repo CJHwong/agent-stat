@@ -124,6 +124,179 @@ impl Drop for Sandbox {
 }
 
 #[test]
+fn auto_zoom_dims_only_inactive_content_and_restores_brightness() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("dim", r"printf '\033[38;2;200;100;50mFIRST'; sleep 120");
+    if sandbox.tmux(&["display-message", "-p", "#{>=:#{version},3.8}"]) != "1" {
+        eprintln!("SKIP: pane color dimming requires tmux 3.8");
+        return;
+    }
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    sandbox.tmux(&["set-option", "-as", "terminal-features", ",xterm*:RGB"]);
+    success(sandbox.command("dim", "enable").output().unwrap());
+    let first = sandbox.tmux(&["display-message", "-p", "-t", "dim:", "#{pane_id}"]);
+    let second = sandbox.tmux(&[
+        "split-window",
+        "-d",
+        "-h",
+        "-t",
+        &first,
+        "-P",
+        "-F",
+        "#{pane_id}",
+        r"printf '\033[38;2;200;100;50mSECOND'; sleep 120",
+    ]);
+    let sidebar = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        &first,
+        "#{@window_sidebar_pane}",
+    ]);
+    let mut client = Client::attach(&sandbox, "dim");
+    client.expect("SECOND");
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &second,
+            "#{?pane_active,#{E:window-active-style},#{E:window-style}}"
+        ]),
+        "dim=50"
+    );
+    for pane in [&first, &sidebar] {
+        assert_eq!(
+            sandbox.tmux(&[
+                "display-message",
+                "-p",
+                "-t",
+                pane,
+                "#{?pane_active,#{E:window-active-style},#{E:window-style}}"
+            ]),
+            "default"
+        );
+    }
+    client.drain(Duration::from_millis(30));
+    sandbox.tmux(&["refresh-client"]);
+    let rendered = String::from_utf8_lossy(&client.drain(Duration::from_millis(100))).into_owned();
+    assert!(
+        regex::Regex::new(r"38;2;100;50;25m(?:\x1b\[[0-9;]*[A-Za-z])*SECOND")
+            .unwrap()
+            .is_match(&rendered),
+        "Inactive text must use dimmed colors"
+    );
+    assert!(
+        regex::Regex::new(r"38;2;200;100;50m(?:\x1b\[[0-9;]*[A-Za-z])*FIRST")
+            .unwrap()
+            .is_match(&rendered),
+        "Active text must use normal colors"
+    );
+    sandbox.tmux(&["select-pane", "-t", &second]);
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &first,
+            "#{?pane_active,#{E:window-active-style},#{E:window-style}}"
+        ]),
+        "dim=50"
+    );
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &second,
+            "#{?pane_active,#{E:window-active-style},#{E:window-style}}"
+        ]),
+        "default"
+    );
+    client.drain(Duration::from_millis(30));
+    sandbox.tmux(&["refresh-client"]);
+    let rendered = String::from_utf8_lossy(&client.drain(Duration::from_millis(100))).into_owned();
+    assert!(
+        regex::Regex::new(r"38;2;100;50;25m(?:\x1b\[[0-9;]*[A-Za-z])*FIRST")
+            .unwrap()
+            .is_match(&rendered),
+        "The previous pane must dim after selection changes"
+    );
+    assert!(
+        regex::Regex::new(r"38;2;200;100;50m(?:\x1b\[[0-9;]*[A-Za-z])*SECOND")
+            .unwrap()
+            .is_match(&rendered),
+        "The selected pane must use normal colors"
+    );
+    success(
+        sandbox
+            .command("dim", "focus-toggle")
+            .args(["--pane", &second])
+            .output()
+            .unwrap(),
+    );
+    for pane in [&first, &second, &sidebar] {
+        assert_eq!(
+            sandbox.tmux(&[
+                "display-message",
+                "-p",
+                "-t",
+                pane,
+                "#{?pane_active,#{E:window-active-style},#{E:window-style}}"
+            ]),
+            "default"
+        );
+    }
+    client.drain(Duration::from_millis(30));
+    sandbox.tmux(&["refresh-client"]);
+    let rendered = String::from_utf8_lossy(&client.drain(Duration::from_millis(100))).into_owned();
+    assert!(!rendered.contains("38;2;100;50;25m"), "{rendered:?}");
+    assert!(
+        regex::Regex::new(r"38;2;200;100;50m(?:\x1b\[[0-9;]*[A-Za-z])*FIRST")
+            .unwrap()
+            .is_match(&rendered),
+        "Active text must use normal colors"
+    );
+    sandbox.tmux(&[
+        "set-option",
+        "-w",
+        "-t",
+        &first,
+        "@window_sidebar_focus_zoom",
+        "1",
+    ]);
+    success(sandbox.command("dim", "toggle").output().unwrap());
+    assert_eq!(
+        sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &first,
+            "#{?pane_active,#{E:window-active-style},#{E:window-style}}"
+        ]),
+        "default"
+    );
+}
+
+#[test]
 fn focus_zoom_preserves_each_window_layout_and_sidebar_width() {
     let sandbox = Sandbox::new();
     sandbox.start("focus", "sleep 120");

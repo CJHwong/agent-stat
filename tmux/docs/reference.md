@@ -73,9 +73,10 @@ It chooses the previous window, or the next window if no previous window exists.
 | Overlay dismissal | Escape closes it. Widening the terminal restores the docked list. |
 | Auto zoom | Enabled; about 85% of the available width or height, subject to native split limits. |
 | Auto zoom setting | Saved per window and included in recovery snapshots. |
+| Auto zoom dimming | On tmux 3.8 or later, inactive content panes use 50% dimming. The sidebar retains normal brightness. |
 | Border label | `Auto zoom: on` or `Auto zoom: off`; compact labels are `Zoom:on` and `Zoom:off`. |
 | Border toggle target | The top-right pane's border on tmux 3.7c and 3.8. |
-| Disable auto zoom | Restore the base layout if the same panes remain. |
+| Disable auto zoom | Restore normal brightness and the base layout if the same panes remain. |
 
 ## Status colors
 
