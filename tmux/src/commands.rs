@@ -14,6 +14,60 @@ pub struct Capture {
     pub command_start: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct Launch {
+    pub no_daemon: bool,
+    pub ollama: bool,
+    pub model: String,
+    pub effort: String,
+}
+fn option(arguments: &[String], name: &str) -> String {
+    let prefix = format!("{name}=");
+    for (index, argument) in arguments.iter().enumerate() {
+        if let Some(value) = argument.strip_prefix(&prefix) {
+            return value.into();
+        }
+        if argument == name {
+            return arguments.get(index + 1).cloned().unwrap_or_default();
+        }
+    }
+    String::new()
+}
+pub fn launch(pid: u32, processes: &HashMap<u32, Process>) -> Launch {
+    let arguments = arguments(pid).unwrap_or_default();
+    let mut launch = Launch {
+        no_daemon: arguments.iter().any(|argument| argument == "--no-daemon"),
+        model: option(&arguments, "--model"),
+        effort: option(&arguments, "--effort"),
+        ..Launch::default()
+    };
+    let mut parent = pid;
+    for _ in 0..128 {
+        let Some(process) = processes.get(&parent) else {
+            break;
+        };
+        parent = process.parent;
+        let arguments = self::arguments(parent).unwrap_or_default();
+        let executable = arguments
+            .first()
+            .and_then(|argument| Path::new(argument).file_name());
+        if executable != Some(std::ffi::OsStr::new("ollama"))
+            || arguments.get(1).map(String::as_str) != Some("launch")
+            || arguments.get(2).map(String::as_str) != Some("claude")
+        {
+            continue;
+        }
+        launch.ollama = true;
+        let model = option(&arguments, "--model");
+        if !model.is_empty() {
+            launch.model = model;
+        }
+        break;
+    }
+    launch
+}
+
 pub fn foreground(root: u32, processes: &HashMap<u32, Process>) -> u32 {
     processes
         .iter()

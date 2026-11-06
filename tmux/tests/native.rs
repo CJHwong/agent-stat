@@ -977,6 +977,135 @@ fn shared_events_keep_unread_markers_and_unknown_rows_have_no_status() {
 }
 
 #[test]
+fn ollama_recovery_preserves_launcher_model_and_profile() {
+    let sandbox = Sandbox::new();
+    let worker = worker(&sandbox.root);
+    let bin = sandbox.root.join("bin");
+    fs::create_dir(&bin).unwrap();
+    fs::copy(worker, bin.join("claude")).unwrap();
+    success(
+        Command::new("rustc")
+            .args(["--edition=2024", "tests/fixtures/ollama.rs", "-o"])
+            .arg(bin.join("ollama"))
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .unwrap(),
+    );
+    let marker = sandbox.root.join("resumed-ollama");
+    let child_pid = sandbox.root.join("child-pid");
+    let profile = sandbox.root.join("ollama profile");
+    fs::create_dir(&profile).unwrap();
+    sandbox.start("source", &format!("env CLAUDE_CONFIG_DIR={} TEST_WORKER_OUTPUT={} TEST_CHILD_PID={} {} launch claude --model test-model -- --effort high", quote(profile.to_str().unwrap()), quote(marker.to_str().unwrap()), quote(child_pid.to_str().unwrap()), quote(bin.join("ollama").to_str().unwrap())));
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    wait_for_file(&marker);
+    let pane = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{pane_id}"]);
+    wait_for_file(&child_pid);
+    let pid: u32 = fs::read_to_string(&child_pid).unwrap().parse().unwrap();
+    append_event(
+        &event_file(&sandbox),
+        serde_json::json!({"event":"Stop","session":"saved-ollama","agent":"claude","agent_pid":pid,"tmux":pane,"ts":1}),
+    );
+    let snapshot: serde_json::Value = serde_json::from_str(&success(
+        sandbox.command("source", "snapshot").output().unwrap(),
+    ))
+    .unwrap();
+    let agent = &snapshot["windows"][0]["panes"][0]["agent"];
+    assert_eq!(agent["launch"]["ollama"], true);
+    assert_eq!(agent["launch"]["model"], "test-model");
+    assert_eq!(agent["profile"], profile.to_str().unwrap());
+    sandbox.tmux(&[
+        "set-environment",
+        "-g",
+        "PATH",
+        &format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+    ]);
+    sandbox.tmux(&[
+        "set-environment",
+        "-g",
+        "TEST_WORKER_OUTPUT",
+        marker.to_str().unwrap(),
+    ]);
+    sandbox.tmux(&[
+        "set-environment",
+        "-g",
+        "TEST_CHILD_PID",
+        child_pid.to_str().unwrap(),
+    ]);
+    sandbox.tmux(&["kill-session", "-t", "source"]);
+    fs::remove_file(&marker).unwrap();
+    let mut restore = sandbox.command("source", "restore");
+    restore.env(
+        "PATH",
+        format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+    );
+    assert_eq!(success(restore.output().unwrap()), "recovered-source");
+    wait_for_file(&marker);
+    let launched = fs::read_to_string(marker).unwrap();
+    assert!(launched.contains("--model\0test-model\0--resume\0saved-ollama\0--effort\0high\0"));
+    assert!(launched.ends_with(profile.to_str().unwrap()));
+}
+
+#[test]
+fn codex_recovery_preserves_no_daemon() {
+    let sandbox = Sandbox::new();
+    let worker = worker(&sandbox.root);
+    let bin = sandbox.root.join("bin");
+    fs::create_dir(&bin).unwrap();
+    fs::copy(worker, bin.join("codex")).unwrap();
+    let marker = sandbox.root.join("resumed-codex");
+    sandbox.start(
+        "source",
+        &format!(
+            "env TEST_WORKER_OUTPUT={} {} --no-daemon resume saved-codex",
+            quote(marker.to_str().unwrap()),
+            quote(bin.join("codex").to_str().unwrap())
+        ),
+    );
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    wait_for_file(&marker);
+    let pane = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{pane_id}"]);
+    let pid: u32 = sandbox
+        .tmux(&["display-message", "-p", "-t", &pane, "#{pane_pid}"])
+        .parse()
+        .unwrap();
+    append_event(
+        &event_file(&sandbox),
+        serde_json::json!({"event":"Stop","session":"saved-codex","agent":"codex","agent_pid":pid,"tmux":pane,"ts":1}),
+    );
+    let snapshot: serde_json::Value = serde_json::from_str(&success(
+        sandbox.command("source", "snapshot").output().unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(
+        snapshot["windows"][0]["panes"][0]["agent"]["launch"]["no_daemon"],
+        true
+    );
+    sandbox.tmux(&[
+        "set-environment",
+        "-g",
+        "PATH",
+        &format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+    ]);
+    sandbox.tmux(&[
+        "set-environment",
+        "-g",
+        "TEST_WORKER_OUTPUT",
+        marker.to_str().unwrap(),
+    ]);
+    sandbox.tmux(&["kill-session", "-t", "source"]);
+    fs::remove_file(&marker).unwrap();
+    let mut restore = sandbox.command("source", "restore");
+    restore.env(
+        "PATH",
+        format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+    );
+    assert_eq!(success(restore.output().unwrap()), "recovered-source");
+    wait_for_file(&marker);
+    let launched = fs::read_to_string(marker).unwrap();
+    assert!(launched.contains("--no-daemon\0resume\0saved-codex\0"));
+}
+
+#[test]
 fn agent_recovery_preserves_profile_labels_and_split_proportions() {
     let sandbox = Sandbox::new();
     let worker = worker(&sandbox.root);
@@ -987,7 +1116,7 @@ fn agent_recovery_preserves_profile_labels_and_split_proportions() {
     let profile = sandbox.root.join("profile with spaces");
     fs::create_dir(&profile).unwrap();
     let command = format!(
-        "env CLAUDE_CONFIG_DIR={} TEST_WORKER_OUTPUT={} {} --resume conversation-123",
+        "env CLAUDE_CONFIG_DIR={} TEST_WORKER_OUTPUT={} {} --resume conversation-123 --model test-model --effort high",
         quote(profile.to_str().unwrap()),
         quote(marker.to_str().unwrap()),
         quote(bin.join("claude").to_str().unwrap())
@@ -1042,6 +1171,10 @@ fn agent_recovery_preserves_profile_labels_and_split_proportions() {
         snapshot["windows"][0]["panes"][0]["agent"]["profile"],
         profile.to_str().unwrap()
     );
+    assert_eq!(
+        snapshot["windows"][0]["panes"][0]["agent"]["launch"]["model"],
+        "test-model"
+    );
     assert!(
         success(sandbox.command("source", "restore").output().unwrap())
             .contains("Nothing to restore")
@@ -1070,7 +1203,7 @@ fn agent_recovery_preserves_profile_labels_and_split_proportions() {
     assert!(restored.contains("recovered-source"), "{restored}");
     wait_for_file(&marker);
     let launched = String::from_utf8(fs::read(&marker).unwrap()).unwrap();
-    assert!(launched.contains("--resume\0conversation-123\0"));
+    assert!(launched.contains("--resume\0conversation-123\0--model\0test-model\0--effort\0high\0"));
     assert!(launched.ends_with(profile.to_str().unwrap()));
     let panes = sandbox.tmux(&[
         "list-panes",

@@ -172,6 +172,9 @@ fn agents(
         agent.profile = commands::profile(agent.pid, &agent.agent)?;
         result.insert(pane, agent);
     }
+    for agent in result.values_mut() {
+        agent.launch = commands::launch(agent.pid, processes);
+    }
     Ok(result)
 }
 pub fn capture(options: &Options, reader: &mut Reader) -> io::Result<Snapshot> {
@@ -354,15 +357,30 @@ pub fn resume(agent: &Agent) -> Option<String> {
     if !agent.profile.is_empty() {
         arguments.push(format!("{variable}={}", agent.profile));
     }
-    arguments.extend([
-        agent.agent.clone(),
-        if agent.agent == "claude" {
-            "--resume".into()
-        } else {
-            "resume".into()
-        },
-        agent.session_id.clone(),
-    ]);
+    if agent.agent == "codex" {
+        arguments.push("codex".into());
+        if agent.launch.no_daemon {
+            arguments.push("--no-daemon".into());
+        }
+        arguments.extend(["resume".into(), agent.session_id.clone()]);
+        return Some(rt::shell(&arguments));
+    }
+    if agent.launch.ollama {
+        arguments.extend(["ollama".into(), "launch".into(), "claude".into()]);
+        if !agent.launch.model.is_empty() {
+            arguments.extend(["--model".into(), agent.launch.model.clone()]);
+        }
+        arguments.push("--".into());
+    } else {
+        arguments.push("claude".into());
+    }
+    arguments.extend(["--resume".into(), agent.session_id.clone()]);
+    if !agent.launch.ollama && !agent.launch.model.is_empty() {
+        arguments.extend(["--model".into(), agent.launch.model.clone()]);
+    }
+    if !agent.launch.effort.is_empty() {
+        arguments.extend(["--effort".into(), agent.launch.effort.clone()]);
+    }
     Some(rt::shell(&arguments))
 }
 fn can_replay(pane: &Pane) -> bool {
@@ -688,6 +706,46 @@ fn restore_pane(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn resume_preserves_agent_launch_options() {
+        let mut agent = Agent {
+            agent: "codex".into(),
+            session_id: "saved-session".into(),
+            launch: commands::Launch {
+                no_daemon: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            resume(&agent).unwrap(),
+            "'env' 'codex' '--no-daemon' 'resume' 'saved-session'"
+        );
+        agent.agent = "claude".into();
+        agent.launch = commands::Launch {
+            model: "local-model:latest".into(),
+            effort: "high".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            resume(&agent).unwrap(),
+            "'env' 'claude' '--resume' 'saved-session' '--model' 'local-model:latest' '--effort' 'high'"
+        );
+        agent.launch.ollama = true;
+        assert_eq!(
+            resume(&agent).unwrap(),
+            "'env' 'ollama' 'launch' 'claude' '--model' 'local-model:latest' '--' '--resume' 'saved-session' '--effort' 'high'"
+        );
+    }
+    #[test]
+    fn old_snapshots_keep_their_original_resume_command() {
+        let agent: Agent =
+            serde_json::from_str(r#"{"agent":"codex","session_id":"saved-session"}"#).unwrap();
+        assert_eq!(
+            resume(&agent).unwrap(),
+            "'env' 'codex' 'resume' 'saved-session'"
+        );
+    }
     #[test]
     fn commands_without_a_process_start_are_not_recovery_candidates() {
         let mut pane = Pane {

@@ -91,6 +91,34 @@ Escape cancels without starting programs. The wheel, arrows, Page Up, and Page D
 See [recovery limits](reference.md#recovery-limits) if a command cannot be selected.
 See [snapshot behavior](explanation.md#why-a-closed-program-does-not-stay-recoverable) to understand when recovery becomes available.
 
+## Keep agent launch settings during recovery
+
+Recovery saves each agent's profile, explicit model, and effort setting.
+It also saves an explicit Codex `--no-daemon` flag.
+For Claude started with `ollama launch claude`, recovery uses that launcher and its model.
+Shell aliases do not need to exist in the new tmux server.
+Older snapshots lack these launch settings. Save a new snapshot while the agents run.
+
+For Codex, disable automatic daemon use in each profile's `config.toml`:
+
+```toml
+[features]
+daemon_auto_start = false
+```
+
+Add the key to the existing `[features]` section if it exists.
+Alternatively, run `codex features disable daemon_auto_start` with the profile's `CODEX_HOME`.
+This setting prevents automatic daemon starts. Codex can still reuse an existing daemon.
+Use explicit `--no-daemon` when a daemon is already running.
+Existing Codex processes keep their current mode.
+You do not need to restart tmux.
+You can also use `codex --no-daemon` or `codex --no-daemon resume <session-id>` explicitly.
+
+Codex's shared daemon can report a different client's pane in hooks.
+Recovery rejects that process association instead of guessing which conversation belongs to a pane.
+A snapshot without a conversation ID cannot resume that conversation.
+See the [Codex hook issue](https://github.com/openai/codex/issues/48500).
+
 ## Enable agent status dots
 
 The sidebar works without status hooks. To add dots, use Python 3.11 or later and `jq` on the reporting machine.

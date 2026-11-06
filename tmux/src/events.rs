@@ -69,6 +69,7 @@ pub struct Agent {
     pub cwd: String,
     pub profile: String,
     pub completion: String,
+    pub launch: crate::commands::Launch,
 }
 
 pub struct Reader {
@@ -229,6 +230,7 @@ impl Reader {
                         cwd: record.cwd.clone(),
                         profile: String::new(),
                         completion: record.completion.clone(),
+                        launch: Default::default(),
                     },
                 );
             }

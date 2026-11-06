@@ -52,6 +52,8 @@ If the pane set changes, the next focus change records a new base layout.
 
 Snapshots describe how to reopen work. They do not save the memory of a running process.
 Claude and Codex conversations can resume through those tools' own commands and saved profiles.
+Snapshots also retain supported model and effort flags, Codex's explicit `--no-daemon`, and the Ollama launcher for Claude.
+Recovery does not copy the complete process environment.
 Other programs need their saved arguments, folder, and a new process environment.
 That is why command reruns require an explicit selection in the preview.
 
