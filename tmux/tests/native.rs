@@ -1069,7 +1069,7 @@ fn wrapped_agent_recovery_preserves_launcher_model_and_profile() {
 }
 
 #[test]
-fn codex_resume_without_hooks_and_old_snapshot_restore_to_a_fresh_session() {
+fn codex_switched_title_without_hooks_restores_the_current_conversation() {
     let sandbox = Sandbox::new();
     let worker = worker(&sandbox.root);
     let bin = sandbox.root.join("bin");
@@ -1078,18 +1078,27 @@ fn codex_resume_without_hooks_and_old_snapshot_restore_to_a_fresh_session() {
     let profile = sandbox.root.join(".codex");
     let sessions = profile.join("sessions/2026/11/06");
     fs::create_dir_all(&sessions).unwrap();
-    let identity = "00000000-0000-7000-8000-000000000001";
+    let launch_identity = "00000000-0000-7000-8000-000000000001";
+    let identity = "00000000-0000-7000-8000-000000000002";
     fs::write(
         sessions.join(format!("rollout-{identity}.jsonl")),
         serde_json::to_vec(&serde_json::json!({"type":"session_meta","payload":{"id":identity}}))
             .unwrap(),
     )
     .unwrap();
+    fs::write(
+        profile.join("session_index.jsonl"),
+        serde_json::to_vec(
+            &serde_json::json!({"id":identity,"thread_name":"Current conversation"}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let marker = sandbox.root.join("resumed-codex-without-hooks");
     sandbox.start(
         "source",
         &format!(
-            "env CODEX_HOME={} TEST_WORKER_OUTPUT={} {} resume {identity}",
+            "env CODEX_HOME={} TEST_WORKER_OUTPUT={} {} resume {launch_identity}",
             quote(profile.to_str().unwrap()),
             quote(marker.to_str().unwrap()),
             quote(bin.join("codex").to_str().unwrap())
@@ -1097,6 +1106,13 @@ fn codex_resume_without_hooks_and_old_snapshot_restore_to_a_fresh_session() {
     );
     sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
     wait_for_file(&marker);
+    sandbox.tmux(&[
+        "select-pane",
+        "-t",
+        "source:",
+        "-T",
+        "Current conversation | work",
+    ]);
     let snapshot: serde_json::Value = serde_json::from_str(&success(
         sandbox.command("source", "snapshot").output().unwrap(),
     ))
@@ -2794,17 +2810,16 @@ fn old_monitor_exits_when_the_socket_and_session_name_are_reused() {
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    let snapshot_directory = sandbox.root.join("state/snapshots");
-    let until = std::time::Instant::now() + Duration::from_secs(4);
-    while !snapshot_directory.is_dir() && std::time::Instant::now() < until {
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    let snapshot = fs::read_dir(snapshot_directory)
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap()
-        .path();
+    use sha2::Digest;
+    let hash = format!(
+        "{:x}",
+        sha2::Sha256::digest(sandbox.socket.to_str().unwrap().as_bytes())
+    );
+    let snapshot = sandbox
+        .root
+        .join("state/snapshots")
+        .join(format!("{}-source.json", &hash[..12]));
+    wait_for_file(&snapshot);
     let saved = fs::read(&snapshot).unwrap();
     std::thread::sleep(Duration::from_millis(150));
     assert_eq!(unsafe { libc::kill(monitor.id() as i32, libc::SIGSTOP) }, 0);

@@ -103,7 +103,8 @@ Snapshots record layouts, folders, labels, auto zoom settings, conversation iden
 The sidebar shows Recover only when saved work is available; F1 and Ctrl+b r remain available.
 Restore checks running processes again and skips conversations already running in the source session.
 Claude's native session registry can provide recovery metadata without supplying status dots.
-Codex recovery also accepts an explicit resume ID with matching transcript metadata when hooks do not identify the pane.
+Codex recovery also accepts a unique native name from the current terminal title with matching transcript metadata.
+This fallback uses the current conversation name instead of an ID retained in the launch command.
 Recovery chooses an unused destination name and preserves existing recovery sessions.
 
 Restore all skips commands that remain running, contain masked credentials, or represent interactive shells.

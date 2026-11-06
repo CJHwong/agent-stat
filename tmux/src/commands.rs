@@ -34,7 +34,7 @@ fn option(arguments: &[String], name: &str) -> String {
     }
     String::new()
 }
-fn codex_identifier(value: &str) -> Option<String> {
+pub fn codex_identifier(value: &str) -> Option<String> {
     static IDENTIFIER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(
             r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
@@ -44,32 +44,6 @@ fn codex_identifier(value: &str) -> Option<String> {
     IDENTIFIER
         .is_match(value)
         .then(|| value.to_ascii_lowercase())
-}
-pub fn codex_resume_identifier(arguments: &[String]) -> Option<String> {
-    if arguments
-        .first()
-        .and_then(|argument| Path::new(argument).file_name())
-        != Some(std::ffi::OsStr::new("codex"))
-        || arguments.iter().any(|argument| {
-            matches!(
-                argument.as_str(),
-                "exec" | "app-server" | "debug" | "review"
-            )
-        })
-    {
-        return None;
-    }
-    arguments.windows(2).find_map(|pair| {
-        (pair[0] == "resume")
-            .then(|| codex_identifier(&pair[1]))
-            .flatten()
-    })
-}
-pub fn saved_codex_identifier(command: &str) -> Option<String> {
-    static RESUME: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"^(?:codex|[A-Za-z0-9_./+-]+/codex|'[^'\n]*/codex')(?: --no-daemon)? resume ([^ ]+)(?: |$)").expect("Saved Codex resume pattern")
-    });
-    codex_identifier(RESUME.captures(command)?.get(1)?.as_str())
 }
 pub fn is_codex_command(command: &str) -> bool {
     static COMMAND: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -324,34 +298,6 @@ pub fn capture(root: u32, processes: &HashMap<u32, Process>) -> Capture {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn explicit_codex_resume_requires_a_native_identifier() {
-        let identity = "00000000-0000-7000-8000-000000000001";
-        let arguments = ["/opt/bin/codex", "resume", identity].map(String::from);
-        assert_eq!(
-            codex_resume_identifier(&arguments).as_deref(),
-            Some(identity)
-        );
-        assert_eq!(
-            saved_codex_identifier(&format!("/opt/bin/codex resume {identity}")).as_deref(),
-            Some(identity)
-        );
-        for arguments in [
-            vec!["codex", "resume", "--last"],
-            vec!["codex", "exec", "resume", identity],
-            vec!["other", "resume", identity],
-        ] {
-            assert!(
-                codex_resume_identifier(
-                    &arguments.into_iter().map(String::from).collect::<Vec<_>>()
-                )
-                .is_none()
-            );
-        }
-        assert!(saved_codex_identifier(&format!("echo codex resume {identity}")).is_none());
-        assert!(saved_codex_identifier("codex resume not-a-conversation-id").is_none());
-        assert!(!is_codex_command("rg codex"));
-    }
     #[test]
     fn generic_launchers_drop_existing_resume_arguments() {
         let arguments = [

@@ -200,19 +200,61 @@ fn transcript_exists(profile: &Path, identifier: &str) -> io::Result<bool> {
     }
     Ok(false)
 }
-fn codex_from_arguments(
+fn codex_title_identifier(profile: &Path, title: &str) -> io::Result<Option<String>> {
+    let Some((name, _)) = title.rsplit_once(" | ") else {
+        return Ok(None);
+    };
+    let name = name.trim_start_matches(|letter: char| {
+        letter.is_whitespace() || ('\u{2800}'..='\u{28ff}').contains(&letter)
+    });
+    let file = match fs::File::open(profile.join("session_index.jsonl")) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let mut names = HashMap::new();
+    for line in io::BufReader::new(file).lines() {
+        let record = match serde_json::from_str::<serde_json::Value>(&line?) {
+            Ok(record) => record,
+            Err(_) => continue,
+        };
+        if let (Some(identifier), Some(name)) =
+            (record["id"].as_str(), record["thread_name"].as_str())
+        {
+            names.insert(identifier.to_owned(), name.to_owned());
+        }
+    }
+    let mut matches = names.into_iter().filter(|(_, candidate)| candidate == name);
+    let Some((identifier, _)) = matches.next() else {
+        return Ok(None);
+    };
+    if matches.next().is_some() || commands::codex_identifier(&identifier).is_none() {
+        return Ok(None);
+    }
+    Ok(transcript_exists(profile, &identifier)?.then_some(identifier))
+}
+fn codex_from_title(
+    options: &Options,
     entry: &Entry,
     processes: &HashMap<u32, Process>,
 ) -> io::Result<Option<Agent>> {
     let pid = commands::foreground(entry.root_pid, processes);
     let arguments = commands::arguments(pid).unwrap_or_default();
-    let Some(identifier) = commands::codex_resume_identifier(&arguments) else {
-        return Ok(None);
-    };
-    let profile = commands::profile(pid, "codex")?;
-    if !transcript_exists(Path::new(&profile), &identifier)? {
+    if arguments
+        .first()
+        .and_then(|program| Path::new(program).file_name())
+        != Some(std::ffi::OsStr::new("codex"))
+    {
         return Ok(None);
     }
+    let profile = commands::profile(pid, "codex")?;
+    let title = model::tmux(
+        &options.socket,
+        &["display-message", "-p", "-t", &entry.pane, "#{pane_title}"],
+    )?;
+    let Some(identifier) = codex_title_identifier(Path::new(&profile), title.trim())? else {
+        return Ok(None);
+    };
     Ok(Some(Agent {
         agent: "codex".into(),
         session_id: identifier,
@@ -228,22 +270,21 @@ fn codex_from_arguments(
     }))
 }
 fn recover_saved_identifier(pane: &mut Pane) -> io::Result<()> {
-    if !pane.agent.session_id.is_empty() {
+    if !pane.agent.session_id.is_empty() && pane.agent.updated > 0. {
         return Ok(());
     }
-    let identifier = commands::codex_resume_identifier(&pane.command.command_argv)
-        .or_else(|| commands::saved_codex_identifier(&pane.command.command));
-    let Some(identifier) = identifier else {
+    if pane.agent.agent != "codex" && !commands::is_codex_command(&pane.command.command) {
         return Ok(());
-    };
+    }
     let profile = if pane.agent.profile.is_empty() {
         rt::home()?.join(".codex")
     } else {
         PathBuf::from(&pane.agent.profile)
     };
-    if !transcript_exists(&profile, &identifier)? {
+    pane.agent.session_id.clear();
+    let Some(identifier) = codex_title_identifier(&profile, &pane.title)? else {
         return Ok(());
-    }
+    };
     pane.agent.agent = "codex".into();
     pane.agent.session_id = identifier;
     pane.agent.profile = profile.to_string_lossy().into_owned();
@@ -283,7 +324,7 @@ fn agents(
         if result.contains_key(&entry.pane) {
             continue;
         }
-        if let Some(agent) = codex_from_arguments(entry, processes)? {
+        if let Some(agent) = codex_from_title(options, entry, processes)? {
             result.insert(entry.pane.clone(), agent);
         }
     }
@@ -881,10 +922,79 @@ fn restore_pane(
 mod tests {
     use super::*;
     #[test]
+    fn codex_switch_uses_the_current_title_instead_of_the_launch_identifier() {
+        let profile = std::env::temp_dir().join(format!("recovery-switch-{}", rt::stamp()));
+        fs::create_dir_all(profile.join("sessions")).unwrap();
+        let launch = "00000000-0000-7000-8000-000000000001";
+        let current = "00000000-0000-7000-8000-000000000002";
+        for identifier in [launch, current] {
+            fs::write(
+                profile
+                    .join("sessions")
+                    .join(format!("rollout-{identifier}.jsonl")),
+                serde_json::to_vec(
+                    &serde_json::json!({"type":"session_meta","payload":{"id":identifier}}),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        }
+        fs::write(
+            profile.join("session_index.jsonl"),
+            format!(
+                "{}\n{}\n",
+                serde_json::json!({"id":launch,"thread_name":"Original conversation"}),
+                serde_json::json!({"id":current,"thread_name":"Switched conversation"})
+            ),
+        )
+        .unwrap();
+        let mut pane = Pane {
+            title: "⠸ Switched conversation | image-gen".into(),
+            agent: Agent {
+                profile: profile.to_string_lossy().into_owned(),
+                ..Default::default()
+            },
+            command: Capture {
+                command: format!("codex resume {launch}"),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        recover_saved_identifier(&mut pane).unwrap();
+        assert_eq!(pane.agent.session_id, current);
+        pane.agent.session_id = launch.into();
+        recover_saved_identifier(&mut pane).unwrap();
+        assert_eq!(pane.agent.session_id, current);
+        fs::write(
+            profile.join("session_index.jsonl"),
+            format!(
+                "{}\n{}\n",
+                serde_json::json!({"id":launch,"thread_name":"Switched conversation"}),
+                serde_json::json!({"id":current,"thread_name":"Switched conversation"})
+            ),
+        )
+        .unwrap();
+        pane.agent.session_id.clear();
+        recover_saved_identifier(&mut pane).unwrap();
+        assert!(
+            pane.agent.session_id.is_empty(),
+            "Duplicate names must not select a conversation"
+        );
+        fs::remove_dir_all(profile).unwrap();
+    }
+    #[test]
     fn saved_codex_identity_requires_matching_transcript_metadata() {
         let profile = std::env::temp_dir().join(format!("recovery-identity-{}", rt::stamp()));
         fs::create_dir_all(profile.join("sessions")).unwrap();
         let identifier = "00000000-0000-7000-8000-000000000001";
+        fs::write(
+            profile.join("session_index.jsonl"),
+            serde_json::to_vec(
+                &serde_json::json!({"id":identifier,"thread_name":"Saved conversation"}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let transcript = profile
             .join("sessions")
             .join(format!("rollout-{identifier}.jsonl"));
@@ -894,6 +1004,7 @@ mod tests {
         )
         .unwrap();
         let mut pane = Pane {
+            title: "Saved conversation | work".into(),
             agent: Agent {
                 profile: profile.to_string_lossy().into_owned(),
                 ..Default::default()

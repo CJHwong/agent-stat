@@ -122,10 +122,12 @@ You can also use `codex --no-daemon` or `codex --no-daemon resume <session-id>` 
 
 Codex's shared daemon can report a different client's pane in hooks.
 Recovery rejects that process association instead of guessing which conversation belongs to a pane.
-When hooks do not identify a running `codex resume <id>` command, recovery checks that explicit ID against its profile's transcript metadata.
+When hooks do not identify Codex, recovery checks the current terminal title against the profile's native name index.
+The name must match exactly one conversation with matching transcript metadata. Use `/rename` to give conversations distinct names.
 This fallback keeps the existing launch mode. It does not add `--no-daemon`.
-Recovery can also repair older snapshots that retain an explicit ID in their saved Codex command.
-An ID from `--last`, the conversation picker, or a fresh `codex` command cannot supply this fallback.
+Recovery can also repair older snapshots that retain the current conversation name in their saved terminal title.
+It does not trust the launch command's ID after an in-app conversation switch.
+Duplicate names and missing index records prevent this fallback.
 The preview marks Codex panes with no verified ID instead of claiming to resume them.
 A snapshot without a verified conversation ID cannot resume that conversation.
 See the [Codex hook issue](https://github.com/openai/codex/issues/48500).

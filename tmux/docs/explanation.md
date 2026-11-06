@@ -65,10 +65,12 @@ The reader checks the process start time and its ancestry inside that pane.
 Claude's native session registry provides another source for this information.
 A tmux session name is not an agent conversation ID.
 
-If hooks do not match, an explicit `codex resume <id>` supplies another source.
-Recovery requires a transcript file in that profile whose `session_meta` record contains the same ID.
-It never guesses the ID from the most recent transcript or from `--last`.
-This fallback identifies the launch conversation. Working hooks are needed to follow conversation switches inside Codex.
+If hooks do not match, recovery checks Codex's current terminal title against that profile's `session_index.jsonl`.
+The name must identify exactly one conversation. Its transcript metadata must contain the same ID.
+Duplicate names or missing metadata leave the pane without a recoverable ID.
+A launch command can retain an old ID after an in-app conversation switch.
+Recovery therefore never uses the launch ID as proof of the current conversation.
+Older snapshots can use their saved terminal title under the same checks.
 
 The snapshot saves the matched conversation ID and profile.
 Restore constructs one native resume command from that ID. It does not append resume flags to the saved agent command.
