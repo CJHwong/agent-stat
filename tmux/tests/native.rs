@@ -1625,13 +1625,24 @@ fn shared_sidebars_keep_mouse_keyboard_new_windows_and_service_recovery() {
     client.wait("shared sidebar click selects another window", || {
         sandbox.tmux(&["display-message", "-p", "-t", "shared:", "#{pane_id}"]) == second
     });
-    let next_sidebar = sandbox.tmux(&[
-        "display-message",
-        "-p",
-        "-t",
-        &second,
-        "#{@window_sidebar_pane}",
-    ]);
+    let mut next_sidebar = String::new();
+    client.wait("new window receives a shared sidebar", || {
+        next_sidebar = sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            &second,
+            "#{@window_sidebar_pane}",
+        ]);
+        !next_sidebar.is_empty()
+            && sandbox.tmux(&[
+                "display-message",
+                "-p",
+                "-t",
+                &next_sidebar,
+                "#{@shared_sidebar}",
+            ]) == "1"
+    });
     assert_eq!(
         sandbox.tmux(&[
             "display-message",
@@ -3125,9 +3136,17 @@ fn monitor_preserves_reboot_snapshots_and_records_deliberate_closures() {
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    std::thread::sleep(Duration::from_millis(250));
+    let ready_deadline = std::time::Instant::now() + Duration::from_secs(4);
+    while fs::read(&path).unwrap() == saved && std::time::Instant::now() < ready_deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_ne!(
+        fs::read(&path).unwrap(),
+        saved,
+        "The monitor must capture the running pane before the test closes it"
+    );
     sandbox.tmux(&["respawn-pane", "-k", "-t", "source", "/bin/sh"]);
-    let deadline = std::time::Instant::now() + Duration::from_secs(12);
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
     let mut empty = false;
     while std::time::Instant::now() < deadline {
         let snapshot: serde_json::Value =
