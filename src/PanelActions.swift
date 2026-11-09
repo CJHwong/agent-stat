@@ -28,19 +28,30 @@ extension AppDelegate {
     /// off the main thread with them.
     func jump(to session: Session) {
         let now = Int(Date().timeIntervalSince1970)
+        let started = ProcessInfo.processInfo.systemUptime
         let receipt = store.attentionReceipt(for: session, now: now)
         let refusal = TmuxTargeting.sharedPaneRefusal(for: session, among: store.visible(now: now))
-        model.status = nil
+        let tabSnapshot = tabs
+        model.status = "Jump to \(jumpLabel(for: session))"
         model.picker = nil
         navigation.receipt = nil
+        // The status line adds a row to the panel. Refit now, or SwiftUI draws it into
+        // the old height and squeezes the header until the click finishes.
+        tick()
         navigation.queue.submit({
             if let refusal { return JumpExecution(summary: "refused", outcome: .failed(message: refusal)) }
-            let plan = Jumper.plan(for: session, routes: Routes.load())
-            return JumpExecution(summary: plan.summary, outcome: Jumper.perform(plan))
+            // Planning and doing share one deadline, so a slow lookup cannot add
+            // its own timeout on top of the click's bound.
+            return CommandRunner.withDeadline {
+                let plan = Jumper.plan(for: session, routes: Routes.load(), tabs: tabSnapshot)
+                return JumpExecution(summary: plan.summary,
+                                     outcome: Jumper.perform(plan, tabs: tabSnapshot))
+            }
         }, completion: { [weak self] result in
             guard let self else { return }
+            let elapsed = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
             Log.write("jump \(session.key.host)/\(session.key.id) "
-                      + "plan=\(result.summary) result=\(result.outcome.summary)")
+                      + "plan=\(result.summary) result=\(result.outcome.summary) elapsed=\(elapsed)ms")
             if result.outcome.succeeded {
                 self.store.acknowledge(receipt)
                 self.remember()
@@ -48,6 +59,14 @@ extension AppDelegate {
             if case .pick = result.outcome { self.navigation.receipt = receipt }
             self.show(result.outcome)
         })
+    }
+
+    /// The shortest name for a row: its title, or the folder it runs in.
+    private func jumpLabel(for session: Session) -> String {
+        if let title = session.title, !title.isEmpty { return title }
+        let folder = session.launchCwd.isEmpty ? session.cwd : session.launchCwd
+        let name = (folder as NSString).lastPathComponent
+        return name.isEmpty ? "session" : name
     }
 
     /// Put a finished jump on screen: a status line, or the tabs to choose from.
@@ -66,13 +85,15 @@ extension AppDelegate {
 
     func jumpTo(tab: GhosttyTab) {
         let receipt = navigation.receipt
+        let started = ProcessInfo.processInfo.systemUptime
         model.picker = nil
         navigation.receipt = nil
         navigation.queue.submit({
             JumpExecution(summary: "selected tab", outcome: Jumper.performGhostty(tab: tab))
         }, completion: { [weak self] result in
             guard let self else { return }
-            Log.write("jump tab=\(tab.name) result=\(result.outcome.summary)")
+            let elapsed = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
+            Log.write("jump tab=\(tab.name) result=\(result.outcome.summary) elapsed=\(elapsed)ms")
             if result.outcome.succeeded, let receipt {
                 self.store.acknowledge(receipt)
                 self.remember()

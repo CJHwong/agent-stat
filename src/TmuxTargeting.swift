@@ -5,6 +5,11 @@ import Foundation
 /// Split from `Jumper`, which decides where a click goes: these are the tmux shapes
 /// themselves, plus the rules over them that a test can drive without a server.
 enum TmuxTargeting {
+    /// The field separator. A comma can appear in a title or a path, and the shell
+    /// safety test refuses spaces and tabs, so the listing uses the ASCII unit
+    /// separator. It has no meaning inside the single quotes a route adds.
+    private static let separator: Character = "\u{1f}"
+
     /// The listing, in a shape that survives a shell.
     ///
     /// A route sends this through ssh, and ssh hands the other end to a shell.
@@ -16,23 +21,24 @@ enum TmuxTargeting {
     /// It carries the window id, not a session and a window index, because a
     /// session name may contain a space and a window id never does. The attached
     /// count says whether a client shows the pane: selecting a pane nobody is
-    /// watching moves nothing you can see.
+    /// watching moves nothing you can see. The title is last, so one listing
+    /// serves both a title match and the pane details: a title jump then needs
+    /// one remote call instead of two.
     static let listing = [
         "list-panes", "-a",
-        "-F#{pane_id},#{window_id},#{session_attached},#{session_id},tty=#{pane_tty},#{pane_current_path}"
+        "-F#{pane_id}\u{1f}#{window_id}\u{1f}#{session_attached}\u{1f}#{session_id}"
+            + "\u{1f}#{pane_tty}\u{1f}#{pane_current_path}\u{1f}#{pane_title}"
     ]
-
-    // Keep titles separate because titles and paths can both contain commas.
-    static let titleListing = ["list-panes", "-a", "-F#{pane_id},#{pane_title}"]
 
     static func matchingPanes(title: String, in listing: String) -> [String] {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !name.isEmpty else { return [] }
         let decoration = CharacterSet.symbols.union(.whitespacesAndNewlines).union(.nonBaseCharacters)
         let matches = listing.split(separator: "\n").compactMap { line -> String? in
-            let fields = line.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: false)
-            guard fields.count == 2 else { return nil }
-            let paneTitle = fields[1].lowercased()
+            let fields = line.split(separator: separator, maxSplits: 6,
+                                    omittingEmptySubsequences: false)
+            guard fields.count == 7 else { return nil }
+            let paneTitle = fields[6].lowercased()
             guard let match = paneTitle.range(of: name) else { return nil }
             // Codex adds a changing spinner before the session title.
             let prefix = String(paneTitle[..<match.lowerBound])
@@ -85,21 +91,16 @@ enum TmuxTargeting {
     }
 
     /// The window that holds this pane, whether a client shows its session, and the
-    /// folder the pane sits in. The path is last, so a comma inside it survives.
+    /// folder the pane sits in. One listing carries all of it, so a title match and
+    /// a pane lookup share one answer.
     static func paneInfo(_ pane: String, in listing: String) -> PaneInfo? {
         let matches = listing.split(separator: "\n").compactMap { line -> PaneInfo? in
-            guard line.hasPrefix(pane + ",") else { return nil }
-            let fields = line.split(separator: ",", maxSplits: 3, omittingEmptySubsequences: false)
-            guard fields.count == 4 else { return nil }
-            let remainder = String(fields[3])
-            let separator = remainder.hasPrefix("$") ? remainder.firstIndex(of: ",") : nil
-            let session = separator.map { String(remainder[..<$0]) }
-            let tail = separator.map { String(remainder[remainder.index(after: $0)...]) } ?? remainder
-            let terminalEnd = tail.hasPrefix("tty=") ? tail.firstIndex(of: ",") : nil
-            let tty = terminalEnd.map { String(tail[tail.index(tail.startIndex, offsetBy: 4)..<$0]) }
-            let path = terminalEnd.map { String(tail[tail.index(after: $0)...]) } ?? tail
+            let fields = line.split(separator: separator, maxSplits: 6,
+                                    omittingEmptySubsequences: false)
+            guard fields.count == 7, fields[0] == Substring(pane) else { return nil }
             return PaneInfo(window: String(fields[1]), attached: (Int(fields[2]) ?? 0) > 0,
-                            path: path, session: session, tty: tty)
+                            path: String(fields[5]), session: String(fields[3]),
+                            tty: String(fields[4]))
         }
         return matches.first(where: \.attached) ?? matches.first
     }

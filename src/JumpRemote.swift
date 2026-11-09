@@ -6,7 +6,8 @@ extension Jumper {
     /// The other machine's half is the network call, and this machine's half is
     /// the tab title match. A unique pane title can recover a missing identifier.
     static func performRoute(host: String, route: Route, pane: String?,
-                             folder: String, title: String?) -> JumpOutcome {
+                             folder: String, title: String?,
+                             snapshot: [GhosttyTab]? = nil) -> JumpOutcome {
         if let socket = route.recordedSocket, !socket.hasPrefix("/") {
             return .failed(message: "the tmux socket path is invalid")
         }
@@ -18,7 +19,7 @@ extension Jumper {
         } else {
             message = "that session reports no tmux pane on \(host)"
         }
-        let tabs = tabs(for: route)
+        let tabs = tabs(for: route, in: snapshot)
         switch tabs.count {
         case 1:
             let outcome = performGhostty(tab: tabs[0])
@@ -39,11 +40,9 @@ extension Jumper {
 
     private static func performNamedRemote(host: String, route: Route, title: String,
                                            folder: String) -> String? {
-        let listing = runTmux(route.argv, route.command(TmuxTargeting.titleListing))
-        guard listing.status == 0 else { return "cannot reach tmux on \(host)" }
-        let candidates = TmuxTargeting.matchingPanes(title: title, in: listing.output)
         let panes = runTmux(route.argv, route.command(TmuxTargeting.listing))
         guard panes.status == 0 else { return "cannot reach tmux on \(host)" }
+        let candidates = TmuxTargeting.matchingPanes(title: title, in: panes.output)
         var resolvedFolder: String?
         let compatible = candidates.filter { pane in
             guard let info = TmuxTargeting.paneInfo(pane, in: panes.output) else { return false }

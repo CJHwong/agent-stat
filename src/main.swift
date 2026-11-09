@@ -26,8 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let screen = ScreenWatcher()
     /// Ghostty's tabs, as last read, and whether a read is in flight. Read only while
     /// the panel is open, on a background queue, so a row can name its tab without the
-    /// panel ever waiting on an AppleScript.
-    private var tabs: [GhosttyTab] = []
+    /// panel ever waiting on an AppleScript. A click reuses this list, so it is not private.
+    var tabs: [GhosttyTab] = []
     private var tabReadInFlight = false
 
     /// The events directory and its files, watched so a landing record updates the panel

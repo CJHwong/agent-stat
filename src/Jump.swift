@@ -94,7 +94,8 @@ enum Jumper {
 
     // MARK: planning
 
-    static func plan(for session: Session, routes: Routes = .none) -> JumpPlan {
+    static func plan(for session: Session, routes: Routes = .none,
+                     tabs: [GhosttyTab]? = nil) -> JumpPlan {
         // Refuse to cross machines before looking at anything local, unless a
         // route names that machine. A tmux pane id is only unique inside one tmux
         // server, and a folder exists on both machines, so acting locally on a
@@ -107,21 +108,25 @@ enum Jumper {
         }
         var context = localContext(for: session)
         if let refusal = localRefusal(context) { return .unavailable(refusal) }
+        // The open panel keeps a tab list fresh. Use it, so a click does not wait
+        // for another AppleScript read. An empty list is no evidence: read live.
+        let snapshot = tabs.flatMap { $0.isEmpty ? nil : $0 }
         if let pane = session.tmuxPane, !pane.isEmpty {
+            context.tabs = snapshot
             return .tmux(pane: pane, context: context)
         }
         let appName = session.term.flatMap(displayName(for:)) ?? "Ghostty"
         guard appName == "Ghostty" else { return .raiseApp(appName) }
         var identified = session
         identified.tty = context.tty
-        let snapshot = ghosttyTabs()
-        let (folder, tabs) = matchingTabs(for: identified, in: snapshot)
-        context.tabs = snapshot
+        let allTabs = snapshot ?? ghosttyTabs()
+        let (folder, matching) = matchingTabs(for: identified, in: allTabs)
+        context.tabs = allTabs
         if let title = session.title, !title.isEmpty,
-           tabs.isEmpty || localClientsContain(tabs, socket: context.socket) {
+           matching.isEmpty || localClientsContain(matching, socket: context.socket) {
             return .tmux(pane: nil, context: context)
         }
-        return tabs.isEmpty ? .raiseApp(appName) : .ghostty(folder: folder, tabs: tabs)
+        return matching.isEmpty ? .raiseApp(appName) : .ghostty(folder: folder, tabs: matching)
     }
 
     /// Tabs for the folder the session was launched in.
@@ -197,11 +202,13 @@ enum Jumper {
     /// Carry out a plan. Everything that forks or waits happens here, which is
     /// why this runs off the main thread: an ssh to another machine can take
     /// seconds, and the panel must not wait on it.
-    static func perform(_ plan: JumpPlan, tab: GhosttyTab? = nil) -> JumpOutcome {
-        CommandRunner.withDeadline { performWithinDeadline(plan, tab: tab) }
+    static func perform(_ plan: JumpPlan, tab: GhosttyTab? = nil,
+                        tabs: [GhosttyTab]? = nil) -> JumpOutcome {
+        CommandRunner.withDeadline { performWithinDeadline(plan, tab: tab, tabs: tabs) }
     }
 
-    private static func performWithinDeadline(_ plan: JumpPlan, tab: GhosttyTab?) -> JumpOutcome {
+    private static func performWithinDeadline(_ plan: JumpPlan, tab: GhosttyTab?,
+                                              tabs snapshot: [GhosttyTab]?) -> JumpOutcome {
         switch plan {
         case .tmux(let pane, let context):
             return performTmux(pane: pane, context: context)
@@ -224,7 +231,8 @@ enum Jumper {
         case .route(let host, let route, let pane, let folder, let title, let socket):
             var resolved = route
             resolved.recordedSocket = socket
-            return performRoute(host: host, route: resolved, pane: pane, folder: folder, title: title)
+            return performRoute(host: host, route: resolved, pane: pane, folder: folder,
+                                title: title, snapshot: snapshot)
         }
     }
 
@@ -233,8 +241,13 @@ enum Jumper {
     /// Several is normal, and none is normal too: a tab title is the program
     /// running in it, not a name you chose. The panel asks when there are
     /// several, and reports where the pane was selected when there are none.
-    static func tabs(for route: Route) -> [GhosttyTab] {
+    static func tabs(for route: Route, in snapshot: [GhosttyTab]? = nil) -> [GhosttyTab] {
         guard let name = route.tab, !name.isEmpty else { return [] }
+        let all = snapshot.flatMap { $0.isEmpty ? nil : $0 } ?? ghosttyTabs()
+        let matching = all.filter { $0.name.localizedCaseInsensitiveContains(name) }
+        // A snapshot can miss a tab opened since it was read. Read live before
+        // reporting that no tab matches.
+        guard matching.isEmpty, snapshot != nil else { return matching }
         return ghosttyTabs().filter { $0.name.localizedCaseInsensitiveContains(name) }
     }
 
