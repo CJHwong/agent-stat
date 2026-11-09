@@ -57,12 +57,15 @@ func testPermissionCompletion() {
 
 func testMultipleTmuxClients() {
     print("tmux supports multiple attached clients")
-    for count in [1, 2, 12] {
-        checkEqual(TmuxTargeting.paneInfo("%0", in: "%0,@0,\(count),/tmp")?.attached, true,
+    let line = { (count: String) in
+        ["%0", "@0", count, "$1", "", "/tmp", ""].joined(separator: "\u{1f}")
+    }
+    for count in ["1", "2", "12"] {
+        checkEqual(TmuxTargeting.paneInfo("%0", in: line(count))?.attached, true,
                    "\(count) attached clients make the pane reachable")
     }
     for count in ["0", "-1", "unknown"] {
-        checkEqual(TmuxTargeting.paneInfo("%0", in: "%0,@0,\(count),/tmp")?.attached, false,
+        checkEqual(TmuxTargeting.paneInfo("%0", in: line(count))?.attached, false,
                    "\(count) is not a positive attached count")
     }
 }

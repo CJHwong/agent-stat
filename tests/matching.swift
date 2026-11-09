@@ -127,6 +127,22 @@ func testTTYDoesNotOverrideTmux() {
     checkEqual(pane, "%9", "the pane wins over the tty")
 }
 
+/// The open panel keeps a tab list fresh. A click reuses it instead of paying
+/// another AppleScript read.
+func testPlanReusesThePanelTabList() {
+    print("a click reuses the panel tab list")
+    var local = Session(key: SessionKey(host: HOST, id: "snapshot"))
+    local.isLocal = true
+    local.tmuxPane = "%9"
+    let tab = GhosttyTab(id: "t", windowId: "w", name: "tmux", cwd: "/w", tty: "/dev/ttys001")
+    guard case .tmux(let pane, let context) = Jumper.plan(for: local, tabs: [tab]) else {
+        check(false, "a pane session still plans its pane")
+        return
+    }
+    checkEqual(pane, "%9", "the pane is unchanged")
+    checkEqual(context.tabs?.count, 1, "the plan carries the panel's tab list")
+}
+
 func testMatchingTmuxClientTabs() {
     print("a local tmux client identifies its Ghostty tab")
     let tabs = [
@@ -144,9 +160,13 @@ func testMatchingTmuxClientTabs() {
           "a client in another terminal app matches no Ghostty tab")
 }
 
+private func remoteLine(_ pane: String, window: String = "@3", attached: String = "1",
+                        folder: String = "/w", title: String = "") -> String {
+    [pane, window, attached, "$1", "", folder, title].joined(separator: "\u{1f}")
+}
+
 private func withRemoteJump(title: String = "Memory report", pane: String? = nil,
-                            titles: String = "%12,Memory report | operator\n",
-                            listing: String = "%12,@3,1,/w\n",
+                            listing: String = remoteLine("%12", title: "Memory report | operator"),
                             failure: String = "",
                             _ body: (JumpOutcome, String) -> Void) {
     withTempDir { directory in
@@ -155,7 +175,6 @@ private func withRemoteJump(title: String = "Memory report", pane: String? = nil
         #!/bin/sh
         cd "$(dirname "$0")" || exit 1
         case "$*" in
-            *pane_title*) cat titles ;;
             list-panes*) cat listing ;;
             run-shell*) exit 1 ;;
             *) while [ "$#" -gt 0 ]; do
@@ -172,7 +191,6 @@ private func withRemoteJump(title: String = "Memory report", pane: String? = nil
                done ;;
         esac
         """.write(to: script, atomically: true, encoding: .utf8)
-        try titles.write(to: directory.appendingPathComponent("titles"), atomically: true, encoding: .utf8)
         try listing.write(to: directory.appendingPathComponent("listing"), atomically: true, encoding: .utf8)
         try failure.write(to: directory.appendingPathComponent("failure"), atomically: true, encoding: .utf8)
         let encoded = try JSONSerialization.data(withJSONObject: ["peer": ["tmux": ["/bin/sh", script.path]]])
@@ -191,35 +209,36 @@ func testRemotePaneTitleFallback() {
     print("a remote session without a pane uses its title")
     withRemoteJump { outcome, selected in
         check(outcome.message?.contains("selected the pane") == true, "a unique title selects the pane")
-        checkEqual(selected, "select-window -t @3\nselect-pane -t %12\n", "the click selects the window and split")
+        checkEqual(selected, "select-window -t $1:@3\nselect-pane -t %12\n", "the click selects the window and split")
     }
-    withRemoteJump(titles: "%12,Memory report\n%12,Memory report\n") { _, selected in
+    withRemoteJump(listing: remoteLine("%12", title: "Memory report") + "\n"
+                    + remoteLine("%12", title: "Memory report")) { _, selected in
         check(selected.contains("select-pane -t %12"), "a linked window does not make one pane ambiguous")
     }
-    withRemoteJump(titles: "%12,⠏ Memory report | operator\n") { _, selected in
+    withRemoteJump(listing: remoteLine("%12", title: "⠏ Memory report | operator")) { _, selected in
         check(selected.contains("select-pane -t %12"), "a live Codex spinner does not hide the session title")
     }
-    withRemoteJump(pane: "%12", titles: "%13,Memory report | operator\n") { _, selected in
+    withRemoteJump(pane: "%12") { _, selected in
         check(selected.contains("select-pane -t %12"), "the recorded identifier keeps priority")
     }
 }
 
 func testRemotePaneTitleRefusals() {
     print("a title fallback refuses uncertain targets")
-    withRemoteJump(titles: "%12,Memory report | operator\n%13,Memory report\n",
-                   listing: "%12,@3,1,/w\n%13,@4,1,/w\n") { outcome, selected in
+    withRemoteJump(listing: remoteLine("%12", title: "Memory report | operator") + "\n"
+                    + remoteLine("%13", window: "@4", title: "Memory report")) { outcome, selected in
         check(outcome.message?.contains("multiple panes") == true, "duplicate titles report ambiguity")
         checkEqual(selected, "", "duplicate titles select nothing")
     }
-    withRemoteJump(titles: "%12,Memory report notes\n") { outcome, selected in
+    withRemoteJump(listing: remoteLine("%12", title: "Memory report notes")) { outcome, selected in
         check(outcome.message?.contains("no pane") == true, "a partial title reports no match")
         checkEqual(selected, "", "a partial title selects nothing")
     }
-    withRemoteJump(listing: "%12,@3,0,/w\n") { outcome, selected in
+    withRemoteJump(listing: remoteLine("%12", attached: "0", title: "Memory report | operator")) { outcome, selected in
         check(outcome.message?.contains("no tmux client") == true, "a detached match reports no client")
         checkEqual(selected, "", "a detached match selects nothing")
     }
-    withRemoteJump(listing: "%12,@3,1,/other\n") { outcome, selected in
+    withRemoteJump(listing: remoteLine("%12", folder: "/other", title: "Memory report | operator")) { outcome, selected in
         check(outcome.message?.contains("different folder") == true, "a match in another folder stays refused")
         checkEqual(selected, "", "another folder selects nothing")
     }
@@ -227,8 +246,8 @@ func testRemotePaneTitleRefusals() {
         check(outcome.message?.contains("no tmux pane") == true, "missing metadata reports an unavailable target")
         checkEqual(selected, "", "missing metadata does not claim a selection")
     }
-    withRemoteJump(titles: "%12,Memory report\n%13,Memory report\n",
-                   listing: "%12,@3,1,/w\n%13,@4,1,/other\n") { _, selected in
+    withRemoteJump(listing: remoteLine("%12", title: "Memory report") + "\n"
+                    + remoteLine("%13", window: "@4", folder: "/other", title: "Memory report")) { _, selected in
         check(selected.contains("select-pane -t %12"), "folder evidence narrows duplicate title matches")
     }
 }
@@ -237,7 +256,7 @@ func testRemotePaneSelectionErrors() {
     print("a failed remote selection reports the error")
     withRemoteJump(failure: "select-window") { outcome, selected in
         check(outcome.message?.contains("could not select @3") == true, "a window failure reports the error")
-        checkEqual(selected, "select-window -t @3\n", "a window failure stops before pane selection")
+        checkEqual(selected, "select-window -t $1:@3\n", "a window failure stops before pane selection")
     }
     withRemoteJump(failure: "select-pane") { outcome, _ in
         check(outcome.message?.contains("could not select pane %12") == true, "a split failure reports the error")
@@ -246,14 +265,19 @@ func testRemotePaneSelectionErrors() {
 
 func testRemotePaneTitleParsing() {
     print("pane titles preserve punctuation and require a complete name")
-    let listing = "%1,Memory report, today | operator\n%2,memory report\n%3,Memory report notes\n%4,notes Memory report\nmalformed\n"
+    let line = { (pane: String, title: String) in
+        [pane, "@1", "1", "$1", "", "/work", title].joined(separator: "\u{1f}")
+    }
+    let listing = [line("%1", "Memory report, today | operator"), line("%2", "memory report"),
+                   line("%3", "Memory report notes"), line("%4", "notes Memory report"),
+                   "malformed"].joined(separator: "\n")
     checkEqual(TmuxTargeting.matchingPanes(title: "Memory report, today", in: listing), ["%1"],
                "a comma in the title survives")
     checkEqual(TmuxTargeting.matchingPanes(title: "Memory report", in: listing), ["%2"],
                "case does not change a match, but extra words do")
     check(TmuxTargeting.matchingPanes(title: "   ", in: listing).isEmpty, "a blank title matches nothing")
     for prefix in ["⠏ ", "⠋ ", "✳ ", "✳️ "] {
-        checkEqual(TmuxTargeting.matchingPanes(title: "Memory report", in: "%12,\(prefix)Memory report | operator"), ["%12"],
+        checkEqual(TmuxTargeting.matchingPanes(title: "Memory report", in: line("%12", "\(prefix)Memory report | operator")), ["%12"],
                    "a status symbol preserves the session title")
     }
 }

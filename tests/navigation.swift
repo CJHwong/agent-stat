@@ -18,14 +18,19 @@ func testNavigationMetadata() {
 
 func testNavigationPaneParsing() {
     print("navigation: empty folders and linked windows")
-    check(TmuxTargeting.paneInfo("%1", in: "%1,@1,1,") != nil, "an unknown folder does not hide the pane")
-    let linked = "%1,@1,0,/work\n%1,@1,1,/work"
+    let line = { (pane: String, window: String, attached: String, session: String, tty: String, path: String, title: String) in
+        [pane, window, attached, session, tty, path, title].joined(separator: "\u{1f}")
+    }
+    check(TmuxTargeting.paneInfo("%1", in: line("%1", "@1", "1", "$2", "", "", "")) != nil,
+          "an unknown folder does not hide the pane")
+    let linked = line("%1", "@1", "0", "$1", "", "/work", "") + "\n"
+        + line("%1", "@1", "1", "$1", "", "/work", "")
     checkEqual(TmuxTargeting.paneInfo("%1", in: linked)?.attached, true,
                "an attached linked copy takes priority over a detached copy")
-    let details = "%1,@1,1,$2,tty=/dev/ttys101,/work,with,commas"
+    let details = line("%1", "@1", "1", "$2", "/dev/ttys101", "/work,with,commas", "Report")
     checkEqual(TmuxTargeting.paneInfo("%1", in: details)?.path, "/work,with,commas",
-               "a terminal field preserves commas in the final path")
-    checkEqual(TmuxTargeting.paneInfo("%1", in: "%1,@1,1,$2,tty=,")?.path, "",
+               "a folder keeps its commas")
+    checkEqual(TmuxTargeting.paneInfo("%1", in: line("%1", "@1", "1", "$2", "", "", ""))?.path, "",
                "empty terminal and folder fields remain valid")
 }
 
@@ -83,8 +88,8 @@ func testNavigationCommandCounts() {
         cd "$(dirname "$0")" || exit 1
         printf '%s\\n' "$1" >> calls
         case "$*" in
-            *pane_title*) printf '%%12,Synthetic target\\n%%13,Synthetic target\\n' ;;
-            list-panes*) printf '%%12,@3,1,$1,tty=/dev/ttys101,/canonical\\n%%13,@4,1,$1,tty=/dev/ttys102,/other\\n' ;;
+            list-panes*) printf '%%12\\037@3\\0371\\037$1\\037/dev/ttys101\\037/canonical\\037Synthetic target\\n'
+                printf '%%13\\037@4\\0371\\037$1\\037/dev/ttys102\\037/other\\037Synthetic target\\n' ;;
             run-shell*) printf '/canonical\\n' ;;
             select-window*) printf 'agent-stat-window-selected\\n' ;;
             *) exit 1 ;;
@@ -96,7 +101,8 @@ func testNavigationCommandCounts() {
         check(result.succeeded, "one compatible title candidate selects successfully")
         let calls = try String(contentsOf: directory.appendingPathComponent("calls"), encoding: .utf8)
         let operations = calls.split(separator: "\n")
-        checkEqual(operations.filter { $0 == "list-panes" }.count, 2, "title and pane details each require one listing")
+        checkEqual(operations.filter { $0 == "list-panes" }.count, 1,
+                   "the title match and the pane details share one listing")
         checkEqual(operations.filter { $0 == "run-shell" }.count, 1, "all candidates share one remote folder resolution")
         checkEqual(operations.filter { $0 == "select-window" }.count, 1, "one command selects both window and pane")
         checkEqual(operations.filter { $0 == "select-pane" }.count, 0, "pane selection adds no separate process")

@@ -602,15 +602,19 @@ func testPaneAvailability() {
     check(TmuxTargeting.sharedPaneRefusal(for: sharedLocal, among: [sharedLocal]) == nil,
           "a local row is never refused this way")
 
-    // The listing carries the window and whether a client shows the session, so a
-    // detached pane is reported instead of silently selected.
-    let output = "%5,@3,1,/w/api\n%6,@4,0,/w/api,with,commas"
+    // One listing carries the window, the attached count, the session, the
+    // terminal, the folder and the title, so a title match shares its answer with
+    // the pane lookup.
+    let output = "%5\u{1f}@3\u{1f}1\u{1f}$1\u{1f}/dev/ttys101\u{1f}/w/api\u{1f}Review unstaged changes"
+        + "\n%6\u{1f}@4\u{1f}0\u{1f}$1\u{1f}\u{1f}/w/api,with,commas\u{1f}Builder"
     checkEqual(TmuxTargeting.paneInfo("%5", in: output)?.window, "@3", "a pane names its window")
     checkEqual(TmuxTargeting.paneInfo("%5", in: output)?.attached, true, "and shows it is attached")
     checkEqual(TmuxTargeting.paneInfo("%6", in: output)?.attached, false, "a detached pane is not attached")
     checkEqual(TmuxTargeting.paneInfo("%5", in: output)?.path, "/w/api", "a pane names its folder")
     checkEqual(TmuxTargeting.paneInfo("%6", in: output)?.path, "/w/api,with,commas",
                "a comma in the folder survives")
+    checkEqual(TmuxTargeting.paneInfo("%6", in: output)?.tty, "",
+               "an empty terminal field remains valid")
     check(TmuxTargeting.paneInfo("%9", in: output) == nil, "a missing pane has no entry")
 
     // A launch folder deep under `.claude` still sits inside the pane's folder.
@@ -669,6 +673,22 @@ func testRoutePlanning() {
 
 }
 
+/// The open panel keeps a tab list fresh. A route click reuses it to find the
+/// tab named by the route, instead of paying another AppleScript read.
+func testRouteTabSnapshot() {
+    print("a route click reuses the panel tab list")
+    let routes = try! Routes.decode(Data(#"{"peer": {"tab": "office"}}"#.utf8))
+    guard let route = routes.route(for: "peer") else {
+        check(false, "the route exists")
+        return
+    }
+    let tab = GhosttyTab(id: "t", windowId: "w", name: "ssh office", cwd: "/w",
+                         tty: "/dev/ttys001")
+    let matched = Jumper.tabs(for: route, in: [tab])
+    checkEqual(matched.count, 1, "a matching snapshot needs no live read")
+    checkEqual(matched.first?.id ?? "-", "t", "the snapshot tab is the target")
+}
+
 /// Every argument the panel hands to tmux must survive a shell, because a route
 /// sends it through ssh and ssh hands the other end to a shell. This is not theory:
 /// a space in the format made the shell split it, and a leading # made it a comment,
@@ -677,7 +697,6 @@ func testRouteShellSafety() {
     print("what a route sends survives a shell")
     let shellBreakers = " \t\n;|&$`\"'<>()*?[]!"
     var sent = TmuxTargeting.listing
-    sent += TmuxTargeting.titleListing
     sent += TmuxTargeting.clients(pane: "%12")
     sent += TmuxTargeting.selects(window: "@3", pane: "%12").flatMap { $0 }
     for argument in sent {
@@ -824,6 +843,7 @@ testGroupingByMachine()
 testMatchingTabs()
 testMatchingTabsByTTY()
 testTTYDoesNotOverrideTmux()
+testPlanReusesThePanelTabList()
 testMatchingTmuxClientTabs()
 testNavigationMetadata()
 testNavigationPaneParsing()
@@ -844,6 +864,7 @@ testDismiss()
 testDismissSurvivesRestart()
 testRoutes()
 testRoutePlanning()
+testRouteTabSnapshot()
 testPaneAvailability()
 testRouteShellSafety()
 testRunEnd()

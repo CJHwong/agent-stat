@@ -48,4 +48,8 @@ func testEmptyConnectedHosts() {
                                acknowledged: { _ in false }, connections: ["office": "offline"])
     check(changed.layout, "the panel resizes when the placeholder disappears")
     checkEqual(model.groups[0].emptyMessage, nil, "an offline host does not claim it has no sessions")
+    model.status = "Jump to Builder Workshop"
+    let statused = model.update(from: [], now: 3, eventsDirectory: directory, attention: 0,
+                                acknowledged: { _ in false }, connections: ["office": "offline"])
+    check(statused.layout, "the panel resizes when the jump status line appears")
 }

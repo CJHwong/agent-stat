@@ -17,7 +17,7 @@ label=$1
 shift
 case "$1" in
 list-panes) if [ "$label" = slow ]; then sleep 0.5; fi
-printf '%%1,@1,1,/work\\n' ;;
+printf '%%1\\037@1\\0371\\037$1\\037\\037/work\\037\\n' ;;
 select-window) printf 'agent-stat-window-selected\\n'
 case " $* " in *' select-pane '*) printf '%s\\n' "$label" >> trace ;; *) exit 1 ;; esac ;;
 esac
@@ -45,7 +45,8 @@ MainActor.assumeIsolated {
     let missing = delegate.store.sessions[SessionKey(host: "missing", id: "missing")]!
     delegate.jump(to: missing)
     let failedDeadline = Date(timeIntervalSinceNow: 2)
-    while delegate.model.status == nil && Date() < failedDeadline { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02)) }
+    while (delegate.model.status?.hasPrefix("Jump to") ?? true) && Date() < failedDeadline { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02)) }
+    precondition(delegate.model.status?.hasPrefix("Jump to") == false, "a failed jump must report its result")
     precondition(!delegate.store.isAcknowledged(missing), "a failed jump must retain attention")
     print("PASS a failed jump retains the session attention marker")
     delegate.jump(to: delegate.store.sessions[SessionKey(host: "slow", id: "slow")]!)

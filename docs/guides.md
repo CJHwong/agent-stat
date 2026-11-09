@@ -94,8 +94,9 @@ repo:
   "laptop": {
     "tmux": [
       "ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
-      "-o", "ClearAllForwardings=yes", "-o", "ControlMaster=no",
-      "-o", "ControlPersist=no", "-o", "ControlPath=~/.local/state/agent-stat/ssh-%C",
+      "-o", "ClearAllForwardings=yes", "-o", "ControlMaster=auto",
+      "-o", "ControlPersist=30", "-o", "ControlPath=~/.local/state/agent-stat/ssh-%C",
+      "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3",
       "laptop", "/opt/homebrew/bin/tmux"
     ],
     "tab": "laptop"
@@ -108,6 +109,8 @@ repo:
   the last element is tmux itself. An empty list means tmux on this machine.
 - `tab` is a Ghostty tab title substring to bring forward. Leave it out and the click
   still selects on the other machine, then says where.
+- The tmux route reuses one SSH connection for the few commands in a click.
+  Keep `ControlPath` and `ControlPersist` set, or every command pays a new handshake.
 
 A route file is read on every click, so navigation changes take effect at once.
 It lives outside synced folders because its tab names belong to this machine.

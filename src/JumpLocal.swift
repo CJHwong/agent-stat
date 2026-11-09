@@ -62,7 +62,7 @@ extension Jumper {
         if let refusal = localRefusal(context) { return .failed(message: refusal) }
         let (listed, argv) = listPanes(socket: context.socket)
         guard listed.status == 0 else { return .failed(message: "tmux is not running at the recorded socket") }
-        let target = pane ?? namedLocalPane(context, argv: argv, listing: listed.output)
+        let target = pane ?? namedLocalPane(context, listing: listed.output)
         guard let target else { return .failed(message: "no unique tmux pane matches that session") }
         guard let info = TmuxTargeting.paneInfo(target, in: listed.output) else {
             return .failed(message: "pane \(target) is gone")
@@ -80,11 +80,9 @@ extension Jumper {
         return focusTmuxClient(pane: target, session: info.session, argv: argv, tabs: context.tabs)
     }
 
-    private static func namedLocalPane(_ context: TmuxContext, argv: [String], listing: String) -> String? {
+    private static func namedLocalPane(_ context: TmuxContext, listing: String) -> String? {
         guard let title = context.title, !title.isEmpty else { return nil }
-        let titles = runTmux(argv, TmuxTargeting.titleListing)
-        guard titles.status == 0 else { return nil }
-        let matches = TmuxTargeting.matchingPanes(title: title, in: titles.output).filter { pane in
+        let matches = TmuxTargeting.matchingPanes(title: title, in: listing).filter { pane in
             guard let info = TmuxTargeting.paneInfo(pane, in: listing) else { return false }
             return info.attached && TmuxTargeting.folderMatches(context.folder, info.path)
         }
@@ -110,7 +108,17 @@ extension Jumper {
         guard clients.status == 0 else {
             return .failed(message: "selected pane \(pane), could not read tmux clients")
         }
-        let tabs = TmuxTargeting.matchingClientTabs(in: clients.output, tabs: snapshot ?? ghosttyTabs())
+        let matched = TmuxTargeting.matchingClientTabs(in: clients.output,
+                                                       tabs: snapshot ?? ghosttyTabs())
+        let outcome = selectTab(matched, pane: pane)
+        // The panel's tab list can be old. If a tab or surface closed since it was
+        // read, read the live list once and try again before reporting the failure.
+        guard case .failed = outcome, let snapshot, !snapshot.isEmpty else { return outcome }
+        let live = TmuxTargeting.matchingClientTabs(in: clients.output, tabs: ghosttyTabs())
+        return live.isEmpty ? outcome : selectTab(live, pane: pane)
+    }
+
+    private static func selectTab(_ tabs: [GhosttyTab], pane: String) -> JumpOutcome {
         if tabs.count > 1 { return .pick(folder: "tmux pane \(pane)", tabs: tabs) }
         if let tab = tabs.first { return performGhostty(tab: tab) }
         activate(appNamed: "Ghostty")

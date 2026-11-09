@@ -3,6 +3,21 @@
 Measured on macOS on 2026-11-05, before and after the six performance fixes.
 The initial measurements cover the working navigation changes and the committed baseline, `bf05b78`.
 
+Later changes on 2026-11-09:
+- One listing carries the pane title, so a title jump uses one remote call, not two.
+- A click reuses the tab list the open panel already refreshes every 30 seconds.
+  An empty list still reads Ghostty live, and a tab that closed since the read is
+  retried once with a live list. A route click reuses the same list.
+- The tmux route reuses one SSH connection for the commands of a click.
+- Planning and doing share one 10 second bound, and the panel shows the target
+  from the moment of the click.
+
+A repeat run of `tests/navigation-performance-probe.py` reports one `list-panes` per
+title jump, 9.5 ms for a remote title jump, and 210 ms for its local jump.
+That probe does not pass a tab list, so it still includes the Ghostty read.
+
+The tables below describe the 2026-11-05 measurements.
+
 ## Results after fixes
 
 Each row compares medians before and after the fixes.
