@@ -2197,6 +2197,54 @@ fn custom_default_command_survives_sidebar_configuration() {
 }
 
 #[test]
+fn border_titles_hide_the_local_host_name() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("titles", "sleep 120");
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    let pane = sandbox.tmux(&["list-panes", "-t", "titles:", "-F", "#{pane_id}"]);
+    let format = sandbox.tmux(&["show-option", "-gqv", "pane-border-format"]);
+    let host = success(Command::new("uname").arg("-n").output().unwrap());
+    for title in [host.as_str(), host.split('.').next().unwrap()] {
+        sandbox.tmux(&["select-pane", "-t", &pane, "-T", title]);
+        let label = sandbox.tmux(&["display-message", "-p", "-t", &pane, &format]);
+        assert!(
+            !label.contains(title),
+            "the border shows the local host name: {label}"
+        );
+    }
+    sandbox.tmux(&[
+        "select-pane",
+        "-t",
+        &pane,
+        "-T",
+        "Switched conversation | image-gen",
+    ]);
+    let label = sandbox.tmux(&["display-message", "-p", "-t", &pane, &format]);
+    assert!(
+        label.contains("Switched conversation"),
+        "the border lost a real pane title: {label}"
+    );
+}
+
+#[test]
 fn plain_tmux_and_new_attached_sessions_open_one_sidebar() {
     let sandbox = Sandbox::new();
     success(

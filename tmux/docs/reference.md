@@ -119,6 +119,7 @@ Command masking covers known credential flags; it is not a general secret detect
 
 The installer adds one source line to `~/.tmux.conf` and preserves its other content.
 Generated configuration enables the mouse, hides the status bar, enables top pane titles, and sets `escape-time` to 20 milliseconds.
+A pane title that only repeats the local host name stays hidden.
 It installs the bindings listed above. It leaves native activity, silence, and bell alerts unchanged.
 New attached sessions and windows in enabled sessions receive sidebars automatically.
 An intentionally hidden sidebar stays hidden on reattachment.
