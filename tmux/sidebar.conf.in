@@ -9,7 +9,7 @@ set-option -g @window_sidebar_focus_zoom 1
 if-shell -F '#{>=:#{version},3.8}' {
     set-option -g window-style '#{?#{&&:#{@window_sidebar_pane},#{&&:#{!=:#{@window_sidebar_focus_zoom},0},#{==:#{@window_sidebar},}}},dim=50,default}'
 }
-set-option -g pane-border-format "#{?pane_active,#[bold],} #{?#{&&:#{@window_sidebar_enabled},#{&&:#{==:#{pane_top},1},#{==:#{e|+:#{pane_left},#{pane_width}},#{window_width}}}},#{?#{>:#{pane_width},24},#{=#{e|-:#{pane_width},24}:pane_title} ,}#[align=right]#{?#{>=:#{pane_width},20},[Auto zoom: #{?#{==:#{@window_sidebar_focus_zoom},0},off,on}] ,Zoom:#{?#{==:#{@window_sidebar_focus_zoom},0},off,on}},#{pane_title} }"
+set-option -g pane-border-format "#{?pane_active,#[bold],} #{?#{&&:#{@window_sidebar_enabled},#{&&:#{==:#{pane_top},1},#{==:#{e|+:#{pane_left},#{pane_width}},#{window_width}}}},#{?#{||:#{==:#{pane_title},#{host}},#{==:#{pane_title},#{s/\\..*//:host}}},,#{?#{>:#{pane_width},24},#{=#{e|-:#{pane_width},24}:pane_title} ,}}#[align=right]#{?#{>=:#{pane_width},20},[Auto zoom: #{?#{==:#{@window_sidebar_focus_zoom},0},off,on}] ,Zoom:#{?#{==:#{@window_sidebar_focus_zoom},0},off,on}},#{?#{||:#{==:#{pane_title},#{host}},#{==:#{pane_title},#{s/\\..*//:host}}},,#{pane_title} }}"
 if-shell -F '#{==:#{default-command},}' { set-option -g default-command "@SIDEBAR_COMMAND@ shell" }
 bind-key -N 'Toggle sidebar' Tab run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' --session '#{session_id}' toggle"
 set-hook -g after-new-window[91] { run-shell -b "@SIDEBAR_COMMAND@ --socket '#{socket_path}' --session '#{session_id}' ensure" }
