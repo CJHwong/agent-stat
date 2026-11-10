@@ -2229,6 +2229,10 @@ fn border_titles_hide_the_local_host_name() {
             !label.contains(title),
             "the border shows the local host name: {label}"
         );
+        assert!(
+            label.contains("sleep"),
+            "the border lost the running command: {label}"
+        );
     }
     sandbox.tmux(&[
         "select-pane",
@@ -2241,6 +2245,78 @@ fn border_titles_hide_the_local_host_name() {
     assert!(
         label.contains("Switched conversation"),
         "the border lost a real pane title: {label}"
+    );
+}
+
+#[test]
+fn border_titles_render_in_the_sidebar_layout() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("titles", "sleep 120");
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    sandbox.tmux(&["set-option", "-g", "@window_sidebar_enabled", "1"]);
+    let pane = sandbox.tmux(&["list-panes", "-t", "titles:", "-F", "#{pane_id}"]);
+    let format = sandbox.tmux(&["show-option", "-gqv", "pane-border-format"]);
+    sandbox.tmux(&[
+        "select-pane",
+        "-t",
+        &pane,
+        "-T",
+        "Switched conversation | image-gen",
+    ]);
+    let label = sandbox.tmux(&["display-message", "-p", "-t", &pane, &format]);
+    assert!(
+        label.contains("Switched conversation"),
+        "the sidebar layout lost a real pane title: {label}"
+    );
+    assert!(
+        label.contains("[Auto zoom: on]"),
+        "the sidebar layout lost the auto zoom label: {label}"
+    );
+    let host = success(Command::new("uname").arg("-n").output().unwrap());
+    for title in [host.as_str(), host.split('.').next().unwrap(), ""] {
+        sandbox.tmux(&["select-pane", "-t", &pane, "-T", title]);
+        let label = sandbox.tmux(&["display-message", "-p", "-t", &pane, &format]);
+        if !title.is_empty() {
+            assert!(
+                !label.contains(title),
+                "the sidebar layout shows the local host name: {label}"
+            );
+        }
+        assert!(
+            label.contains("sleep"),
+            "the sidebar layout lost the running command: {label}"
+        );
+    }
+    let folder = sandbox.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        &pane,
+        "#{b:pane_current_path}",
+    ]);
+    sandbox.tmux(&["select-pane", "-t", &pane, "-T", &folder]);
+    let label = sandbox.tmux(&["display-message", "-p", "-t", &pane, &format]);
+    assert!(
+        label.contains("sleep"),
+        "the sidebar layout lost the running command for a folder title: {label}"
     );
 }
 
