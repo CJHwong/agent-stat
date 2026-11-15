@@ -578,8 +578,16 @@ fn mouse_at(
         }
     }
     match event.kind {
-        MouseEventKind::ScrollDown => view.move_selection(3),
-        MouseEventKind::ScrollUp => view.move_selection(-3),
+        MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+            view.move_selection(if event.kind == MouseEventKind::ScrollDown {
+                1
+            } else {
+                -1
+            });
+            if view.live {
+                return choose(view, options);
+            }
+        }
         MouseEventKind::Down(button)
             if event.row >= view.list_start()
                 && event.row < height.saturating_sub(if view.live { 4 } else { 2 }) =>
@@ -899,6 +907,39 @@ mod tests {
     }
 
     use super::*;
+    #[test]
+    fn search_wheel_moves_one_entry_without_choosing() {
+        let mut view = View {
+            entries: vec![Entry::default(); 4],
+            selected: 1,
+            ..View::default()
+        };
+        for (kind, expected) in [
+            (MouseEventKind::ScrollDown, 2),
+            (MouseEventKind::ScrollUp, 1),
+            (MouseEventKind::ScrollUp, 0),
+            (MouseEventKind::ScrollUp, 0),
+        ] {
+            let event = event::MouseEvent {
+                kind,
+                column: 5,
+                row: 6,
+                modifiers: KeyModifiers::NONE,
+            };
+            assert!(!mouse_at(&mut view, &Options::default(), event, (28, 40)).unwrap());
+            assert_eq!(view.selected, expected);
+        }
+        view.entries.clear();
+        let event = event::MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 5,
+            row: 6,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(!mouse_at(&mut view, &Options::default(), event, (28, 40)).unwrap());
+        assert_eq!(view.selected, 0);
+    }
+
     #[test]
     fn recover_row_uses_only_published_availability() {
         let mut view = View {

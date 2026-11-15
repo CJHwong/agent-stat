@@ -1,4 +1,5 @@
 use crate::{Options, events, model, runtime as rt, shared_input, ui};
+use crossterm::event::{Event, MouseEventKind};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
@@ -233,19 +234,50 @@ impl Sidebar {
         Ok(())
     }
 
-    fn input(&mut self, options: &Options, request: shared_input::Request) -> io::Result<()> {
+    fn input(
+        &mut self,
+        options: &Options,
+        request: shared_input::Request,
+        event: Event,
+    ) -> io::Result<()> {
         let mut target = options.clone();
         target.session = self.pane.session.clone();
         target.owner_window = self.pane.window.clone();
         target.pane = Some(self.pane.id.clone());
         target.client = request.client;
         target.detached_actions = true;
-        let event = shared_input::event(&request.input)?;
         let dimensions = self.input_dimensions(&target, &request.input)?;
         self.pane.width = dimensions.0;
         self.pane.height = dimensions.1;
         self.view.input(&target, event, dimensions)?;
         self.draw(options)
+    }
+}
+
+#[derive(Default)]
+struct WheelRepeat {
+    sessions: HashMap<String, (MouseEventKind, Instant)>,
+}
+
+impl WheelRepeat {
+    fn accepts(&mut self, session: &str, event: &Event, now: Instant) -> bool {
+        let Event::Mouse(mouse) = event else {
+            return true;
+        };
+        if !matches!(
+            mouse.kind,
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+        ) {
+            return true;
+        }
+        if self.sessions.get(session).is_some_and(|(kind, accepted)| {
+            *kind == mouse.kind && now.duration_since(*accepted) < Duration::from_millis(100)
+        }) {
+            return false;
+        }
+        // Ignored events must not postpone the next step during continuous scrolling.
+        self.sessions.insert(session.to_owned(), (mouse.kind, now));
+        true
     }
 }
 
@@ -255,6 +287,7 @@ struct Service {
     scanned: Instant,
     sidebars: HashMap<String, Sidebar>,
     entries: HashMap<String, Arc<Vec<model::Entry>>>,
+    wheel: WheelRepeat,
 }
 
 fn reuse_rows(
@@ -305,6 +338,9 @@ impl Service {
                 self.refresh_pane(options, pane, Arc::clone(rows));
             }
         }
+        self.wheel
+            .sessions
+            .retain(|session, _| entries.contains_key(session));
         self.entries = entries;
         Ok(true)
     }
@@ -331,9 +367,17 @@ impl Service {
         match socket.recv(&mut buffer) {
             Ok(length) => {
                 let request: shared_input::Request = serde_json::from_slice(&buffer[..length])?;
-                if let Some(sidebar) = self.sidebars.get_mut(&request.pane) {
-                    sidebar.input(options, request)?;
+                let event = shared_input::event(&request.input)?;
+                let Some(sidebar) = self.sidebars.get_mut(&request.pane) else {
+                    return Ok(());
+                };
+                if !self
+                    .wheel
+                    .accepts(&sidebar.pane.session, &event, Instant::now())
+                {
+                    return Ok(());
                 }
+                sidebar.input(options, request, event)?;
             }
             Err(error)
                 if matches!(
@@ -378,6 +422,7 @@ pub fn run(options: &Options) -> io::Result<()> {
         scanned: Instant::now() - Duration::from_secs(1),
         sidebars: HashMap::new(),
         entries: HashMap::new(),
+        wheel: WheelRepeat::default(),
     };
     let mut refreshed = Instant::now() - Duration::from_secs(1);
     loop {
@@ -462,6 +507,26 @@ pub fn replace_pane(options: &Options, pane: &str, window: &str) -> io::Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wheel_repeats_without_a_pause_and_reverses_without_delay() {
+        let mut wheel = WheelRepeat::default();
+        let now = Instant::now();
+        let down = shared_input::event("wheel-down:5:6").unwrap();
+        let up = shared_input::event("wheel-up:5:6").unwrap();
+        assert!(wheel.accepts("$0", &down, now));
+        for elapsed in [10, 30, 50, 70, 90] {
+            assert!(!wheel.accepts("$0", &down, now + Duration::from_millis(elapsed)));
+        }
+        assert!(wheel.accepts("$0", &down, now + Duration::from_millis(100)));
+        assert!(!wheel.accepts("$0", &down, now + Duration::from_millis(110)));
+        assert!(wheel.accepts("$1", &down, now + Duration::from_millis(110)));
+        assert!(wheel.accepts("$0", &down, now + Duration::from_millis(200)));
+        assert!(wheel.accepts("$0", &up, now + Duration::from_millis(201)));
+        assert!(!wheel.accepts("$0", &up, now + Duration::from_millis(202)));
+        assert!(wheel.accepts("$0", &shared_input::event("Enter").unwrap(), now));
+        assert!(wheel.accepts("$0", &shared_input::event("mouse-left:5:6").unwrap(), now));
+    }
 
     fn pane() -> Pane {
         Pane {

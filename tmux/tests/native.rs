@@ -1551,6 +1551,155 @@ struct Client {
 }
 
 #[test]
+fn shared_wheel_selects_one_adjacent_entry() {
+    check_wheel_selection(true);
+}
+
+#[test]
+fn separate_wheel_selects_one_adjacent_entry() {
+    check_wheel_selection(false);
+}
+
+#[test]
+fn shared_wheel_repeats_without_a_pause() {
+    let (sandbox, mut client, contents) = wheel_session(true);
+    client.drain(Duration::from_millis(200));
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_millis(400) {
+        client.send(b"\x1b[<65;6;8M");
+        client.drain(Duration::from_millis(20));
+    }
+    client.send(b"\x1b[23~");
+    client.wait("tmux drains continuous scrolling", || {
+        sandbox.tmux(&["show-option", "-qv", "-t", "wheel", "@wheel_test_drained"]) == "1"
+    });
+    client.wait(
+        "continuous scrolling advances beyond the first entry",
+        || {
+            let active = sandbox.tmux(&["display-message", "-p", "-t", "wheel:", "#{pane_id}"]);
+            contents[2..].contains(&active)
+        },
+    );
+}
+
+fn wheel_session(shared: bool) -> (Sandbox, Client, Vec<String>) {
+    let sandbox = Sandbox::new();
+    let mut installer = Command::new(binary());
+    installer.args([
+        "install",
+        "--home",
+        sandbox.root.to_str().unwrap(),
+        "--apply",
+    ]);
+    if shared {
+        installer.arg("--shared");
+    }
+    success(installer.output().unwrap());
+    sandbox.start("wheel", "sleep 120");
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    let first = sandbox.tmux(&["display-message", "-p", "-t", "wheel:", "#{pane_id}"]);
+    let mut contents = vec![first];
+    for _ in 0..3 {
+        contents.push(sandbox.tmux(&[
+            "new-window",
+            "-d",
+            "-t",
+            "wheel:",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "sleep 120",
+        ]));
+    }
+    success(sandbox.command("wheel", "enable").output().unwrap());
+    sandbox.tmux(&[
+        "bind-key",
+        "-n",
+        "F11",
+        "set-option",
+        "-t",
+        "wheel",
+        "@wheel_test_drained",
+        "1",
+    ]);
+    let mut client = Client::attach(&sandbox, "wheel");
+    client.wait("sidebar is ready for scrolling", || {
+        let sidebar = sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "wheel:",
+            "#{@window_sidebar_pane}",
+        ]);
+        !sidebar.is_empty()
+            && sandbox
+                .tmux(&["capture-pane", "-p", "-t", &sidebar])
+                .contains("+ New")
+    });
+    (sandbox, client, contents)
+}
+
+fn check_wheel_selection(shared: bool) {
+    let (sandbox, mut client, contents) = wheel_session(shared);
+    for (button, expected) in [
+        (65, 1),
+        (65, 2),
+        (65, 3),
+        (65, 3),
+        (64, 2),
+        (64, 1),
+        (64, 0),
+        (64, 0),
+    ] {
+        let mut sidebar = String::new();
+        client.wait("current sidebar is ready for the wheel", || {
+            sidebar = sandbox.tmux(&[
+                "display-message",
+                "-p",
+                "-t",
+                "wheel:",
+                "#{@window_sidebar_pane}",
+            ]);
+            !sidebar.is_empty()
+                && sandbox
+                    .tmux(&["capture-pane", "-p", "-t", &sidebar])
+                    .contains("+ New")
+        });
+        client.drain(Duration::from_millis(180));
+        let top: u16 = sandbox
+            .tmux(&["display-message", "-p", "-t", &sidebar, "#{pane_top}"])
+            .parse()
+            .unwrap();
+        let left: u16 = sandbox
+            .tmux(&["display-message", "-p", "-t", &sidebar, "#{pane_left}"])
+            .parse()
+            .unwrap();
+        sandbox.tmux(&["set-option", "-t", "wheel", "@wheel_test_drained", "0"]);
+        client.send(&format!("\x1b[<{button};{};{}M", left + 6, top + 7).into_bytes());
+        client.send(b"\x1b[23~");
+        client.wait("tmux drains the wheel batch", || {
+            sandbox.tmux(&["show-option", "-qv", "-t", "wheel", "@wheel_test_drained"]) == "1"
+        });
+        client.wait("one wheel event selects the adjacent content", || {
+            sandbox.tmux(&["display-message", "-p", "-t", "wheel:", "#{pane_id}"])
+                == contents[expected]
+        });
+        client.drain(Duration::from_millis(180));
+        assert_eq!(
+            sandbox.tmux(&["display-message", "-p", "-t", "wheel:", "#{pane_id}"]),
+            contents[expected]
+        );
+    }
+}
+
+#[test]
 fn shared_sidebars_keep_mouse_keyboard_new_windows_and_service_recovery() {
     let sandbox = Sandbox::new();
     success(

@@ -24,6 +24,7 @@ If you use another prefix, substitute it for Ctrl+b.
 | Control | Result |
 |---|---|
 | Click a sidebar row | Select its window or pane. |
+| Scroll over the sidebar | Select the adjacent entry. Shared mode repeats at most once every 100 milliseconds without requiring a pause. |
 | New, Split, Rename | Create a window, choose a split direction, or name a pane. |
 | F1 or right-click | Open Actions. Escape closes the menu. |
 | Ctrl+b / or sidebar Search | Search titles, folders, and commands. |
