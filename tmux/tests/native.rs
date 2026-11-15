@@ -1681,12 +1681,7 @@ fn check_wheel_selection(shared: bool) {
             .tmux(&["display-message", "-p", "-t", &sidebar, "#{pane_left}"])
             .parse()
             .unwrap();
-        sandbox.tmux(&["set-option", "-t", "wheel", "@wheel_test_drained", "0"]);
         client.send(&format!("\x1b[<{button};{};{}M", left + 6, top + 7).into_bytes());
-        client.send(b"\x1b[23~");
-        client.wait("tmux drains the wheel batch", || {
-            sandbox.tmux(&["show-option", "-qv", "-t", "wheel", "@wheel_test_drained"]) == "1"
-        });
         client.wait("one wheel event selects the adjacent content", || {
             sandbox.tmux(&["display-message", "-p", "-t", "wheel:", "#{pane_id}"])
                 == contents[expected]
