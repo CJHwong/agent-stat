@@ -55,6 +55,9 @@ final class SessionStore {
     private(set) var dismissedPositions: [SessionKey: EventPosition] = [:]
     private var positions: [SessionKey: EventPosition] = [:]
     private var askedPositions: [SessionKey: EventPosition] = [:]
+    /// The turn of an ask that nothing has followed yet. Claude repeats an idle ask
+    /// as a Notification in the same turn, and that reminder is not a new ask.
+    private var openAskTurns: [SessionKey: String] = [:]
     private let localHost: String
 
     init(localHost: String) {
@@ -92,9 +95,15 @@ final class SessionStore {
         sessions[key] = session
         guard let position else { return }
         positions[key] = position
+        if record.event == "Notification", let turn = record.turn, openAskTurns[key] == turn { return }
         let asks = ["Stop", "StopFailure", "PermissionRequest", "Notification"].contains(record.event)
         let failedOnEnd = record.event == "SessionEnd" && session.state == .failed && previousState != .failed
-        if asks || failedOnEnd { askedPositions[key] = position }
+        if asks || failedOnEnd {
+            askedPositions[key] = position
+            openAskTurns[key] = record.turn
+        } else {
+            openAskTurns[key] = nil
+        }
     }
 
     func applyTitles(_ titles: [String: String], host: String) {
@@ -221,14 +230,16 @@ final class SessionStore {
 
     /// Has this session's latest event already been dealt with?
     ///
-    /// True after successful navigation, until that session reports another event.
-    /// The row keeps its state and only the dot changes: it still wants you, you
-    /// just know about it.
+    /// True after a click, until that session asks for you again. Work and finished
+    /// subagents do not ask, so they leave the click in place. The row keeps its state
+    /// and only the dot changes: it still wants you, you just know about it.
     func isAcknowledged(_ session: Session) -> Bool {
-        if let position = acknowledgedPositions[session.key], let latest = positions[session.key] {
-            return latest <= position
+        guard let cover = acknowledged[session.key] else { return false }
+        if let position = acknowledgedPositions[session.key] {
+            guard let asked = askedPositions[session.key] else { return true }
+            return asked <= position
         }
-        return session.lastTs <= (acknowledged[session.key] ?? 0)
+        return session.askedAt <= cover
     }
 
     /// Does this session want your attention right now?

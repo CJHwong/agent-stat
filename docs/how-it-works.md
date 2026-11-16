@@ -98,8 +98,10 @@ until that session ends.
 ## A dot turns blue when you have seen it
 
 Red means a session wants you and you have not dealt with it. Clicking the row deals with
-it, so the dot turns blue and the badge stops counting it, and the session's next event
-makes it red again.
+it, so the dot turns blue and the badge stops counting it. The dot turns red again only
+when the session asks again: a finished turn, a failure, a permission prompt, or a
+notification. Tool work and finished subagents do not ask. Claude repeats an idle ask as a
+notification in the same turn, and that reminder keeps the dot blue.
 
 A ready session also has a blue dot before work starts or resumes.
 Claude's start source distinguishes a new session, resume, clear, and completed compaction.

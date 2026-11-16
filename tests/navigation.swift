@@ -171,6 +171,34 @@ func testNavigationAttentionReceipt() {
     check(!store.isAcknowledged(store.sessions[key]!), "a new event remains unread when an old jump finishes")
 }
 
+func testNavigationClickSurvivesNonAskingEvents() {
+    print("navigation: a click holds until the session asks again")
+    let store = SessionStore(localHost: HOST)
+    let key = SessionKey(host: HOST, id: "asks")
+    var offset: UInt64 = 0
+    func feed(_ json: String) {
+        offset += 100
+        store.apply(decode(json), host: HOST, position: EventPosition(file: "host.jsonl", offset: offset))
+    }
+    feed(#"{"ts":100,"event":"PreToolUse","session":"asks","turn":"one","tool":"Bash"}"#)
+    feed(#"{"ts":101,"event":"Stop","session":"asks","turn":"one"}"#)
+    store.acknowledge(store.attentionReceipt(for: store.sessions[key]!, now: 102))
+    feed(#"{"ts":160,"event":"Notification","session":"asks","turn":"one"}"#)
+    check(store.isAcknowledged(store.sessions[key]!), "the idle reminder for the clicked stop keeps the click")
+    feed(#"{"ts":170,"event":"SubagentStop","session":"asks","agent_id":"helper"}"#)
+    check(store.isAcknowledged(store.sessions[key]!), "a finished subagent keeps the click")
+    feed(#"{"ts":180,"event":"UserPromptSubmit","session":"asks","turn":"two"}"#)
+    feed(#"{"ts":181,"event":"PreToolUse","session":"asks","turn":"two","tool":"Bash"}"#)
+    feed(#"{"ts":182,"event":"Notification","session":"asks","turn":"two"}"#)
+    check(!store.isAcknowledged(store.sessions[key]!), "a notification after new work asks again")
+    store.acknowledge(store.attentionReceipt(for: store.sessions[key]!, now: 183))
+    feed(#"{"ts":190,"event":"PreToolUse","session":"asks","turn":"two","tool":"Bash"}"#)
+    feed(#"{"ts":191,"event":"Notification","session":"asks","turn":"two"}"#)
+    check(!store.isAcknowledged(store.sessions[key]!), "a notification after tool work in the same turn asks again")
+    feed(#"{"ts":192,"event":"Stop","session":"asks","turn":"two"}"#)
+    check(!store.isAcknowledged(store.sessions[key]!), "a new stop asks again")
+}
+
 func testNavigationShellQuoting() {
     print("navigation: session identifiers survive an SSH shell")
     withTempDir { directory in
