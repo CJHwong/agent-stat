@@ -9,7 +9,8 @@ use std::{io, time::Duration};
 
 const RESTORE: &str = "[r] Restore all";
 const SAVE: &str = "[s] Save snapshot";
-const SAVE_WARNING: &str = "Saving replaces the latest snapshot for this session.";
+const SAVE_WARNING: &str = "Saving adds a snapshot when the session changed. Five are kept.";
+const PICK: &str = "1-5 or Left/Right: Snapshot";
 
 fn detail(rows: &mut Vec<String>, text: &str, width: usize) {
     rows.extend(
@@ -21,8 +22,23 @@ fn detail(rows: &mut Vec<String>, text: &str, width: usize) {
 fn count(amount: usize, noun: &str) -> String {
     format!("{amount} {noun}{}", if amount == 1 { "" } else { "s" })
 }
+fn age(saved_at: f64) -> String {
+    let seconds = (crate::runtime::stamp() as f64 / 1e9 - saved_at).max(0.0) as u64;
+    match seconds {
+        0..60 => "just now".into(),
+        60..3600 => format!("{} min ago", seconds / 60),
+        3600..86400 => format!("{} h ago", seconds / 3600),
+        _ => format!("{} d ago", seconds / 86400),
+    }
+}
 fn lines(plan: &Plan, width: usize) -> Vec<String> {
     let mut rows = vec![
+        format!(
+            "Snapshot {} of {}, saved {}",
+            plan.slot + 1,
+            plan.slots,
+            age(plan.snapshot.saved_at)
+        ),
         format!("Source session: {}", plan.snapshot.session),
         format!("Restore into: {}", plan.destination),
         format!(
@@ -114,6 +130,9 @@ fn load(options: &Options, sender: &std::sync::mpsc::Sender<io::Result<Plan>>, s
     });
 }
 pub fn run(options: &Options) -> io::Result<()> {
+    let mut options = options.clone();
+    options.snapshot = 0;
+    let options = &mut options;
     let (sender, receiver) = std::sync::mpsc::channel();
     load(options, &sender, false);
     let mut saving = false;
@@ -175,7 +194,7 @@ pub fn run(options: &Options) -> io::Result<()> {
                 "Loading saved sessions...  Esc: Close".into()
             } else {
                 format!(
-                    "{restore_label}  {SAVE}  Esc: Close  {}-{}/{}",
+                    "{restore_label}  {SAVE}  {PICK}  Esc: Close  {}-{}/{}",
                     offset + 1,
                     (offset + capacity).min(rows.len()),
                     rows.len()
@@ -199,6 +218,7 @@ pub fn run(options: &Options) -> io::Result<()> {
         }
         let mut restore = false;
         let mut save = false;
+        let mut pick = None;
         match event::read()? {
             Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(()),
@@ -208,6 +228,9 @@ pub fn run(options: &Options) -> io::Result<()> {
                 KeyCode::PageUp => offset = offset.saturating_sub(capacity),
                 KeyCode::Char('r') => restore = available && !loading,
                 KeyCode::Char('s') => save = !loading,
+                KeyCode::Char(digit @ '1'..='5') => pick = Some(digit as usize - '1' as usize),
+                KeyCode::Left => pick = options.snapshot.checked_sub(1),
+                KeyCode::Right => pick = Some(options.snapshot + 1),
                 _ => {}
             },
             Event::Mouse(mouse) => match mouse.kind {
@@ -224,7 +247,19 @@ pub fn run(options: &Options) -> io::Result<()> {
             },
             _ => {}
         }
+        let slots = plan.as_ref().map_or(0, |plan| plan.slots);
+        if let Some(slot) =
+            pick.filter(|slot| !loading && *slot < slots && *slot != options.snapshot)
+        {
+            options.snapshot = slot;
+            loading = true;
+            notice.clear();
+            offset = 0;
+            rows_dirty = true;
+            load(options, &sender, false);
+        }
         if save {
+            options.snapshot = 0;
             loading = true;
             saving = true;
             notice.clear();
@@ -237,12 +272,17 @@ pub fn run(options: &Options) -> io::Result<()> {
                 .as_ref()
                 .map(|plan| plan.commands.iter().cloned().collect())
                 .unwrap_or_default();
-            match recovery::restore(options, &commands) {
+            let shown = plan.as_ref().ok().map(|plan| &plan.snapshot);
+            match recovery::restore(options, &commands, shown) {
                 Ok(Some(_)) => return Ok(()),
                 Ok(None) => {
                     notice = "Nothing started; the saved programs are already running.".into()
                 }
-                Err(failure) => notice = failure.to_string(),
+                Err(failure) => {
+                    notice = failure.to_string();
+                    loading = true;
+                    load(options, &sender, false);
+                }
             }
         }
         dirty = true;
@@ -302,6 +342,8 @@ mod tests {
                 }],
                 ..Default::default()
             },
+            slot: 1,
+            slots: 3,
             active: HashSet::new(),
             eligible: vec!["%1".into()],
             commands: vec!["%2".into()],
@@ -321,6 +363,7 @@ mod tests {
         ] {
             assert!(preview.find(action).unwrap() > heading);
         }
+        assert!(preview.contains("Snapshot 2 of 3, saved "));
         assert!(preview.contains("Command: npm run dev"));
         assert!(!preview.contains("saved-conversation"));
         assert!(!preview.contains("[ ]"));

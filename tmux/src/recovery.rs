@@ -53,6 +53,8 @@ pub struct Snapshot {
 #[derive(Serialize)]
 pub struct Plan {
     pub snapshot: Snapshot,
+    pub slot: usize,
+    pub slots: usize,
     pub active: HashSet<String>,
     pub eligible: Vec<String>,
     pub commands: Vec<String>,
@@ -78,6 +80,82 @@ pub fn path(options: &Options) -> io::Result<PathBuf> {
     Ok(rt::state_root()?
         .join("snapshots")
         .join(format!("{}.json", namespace(options)?)))
+}
+pub const SLOTS: usize = 5;
+fn history(options: &Options) -> io::Result<PathBuf> {
+    Ok(rt::state_root()?
+        .join("snapshot-history")
+        .join(namespace(options)?))
+}
+fn slot_path(newest: &Path, history: &Path, slot: usize) -> PathBuf {
+    if slot == 0 {
+        newest.to_path_buf()
+    } else {
+        history.join(format!("{slot}.json"))
+    }
+}
+fn count_slots(newest: &Path, history: &Path) -> usize {
+    (0..SLOTS)
+        .take_while(|slot| slot_path(newest, history, *slot).is_file())
+        .count()
+}
+// Only what a restore acts on. Titles, states and layouts change every few
+// seconds and would push real history out of the five slots.
+fn fingerprint(snapshot: &Snapshot) -> serde_json::Value {
+    let windows = snapshot
+        .windows
+        .iter()
+        .map(|window| {
+            let panes = window
+                .panes
+                .iter()
+                .filter(|pane| !pane.sidebar)
+                .map(|pane| {
+                    let replay = if can_replay(pane) {
+                        pane.command.command_argv.clone()
+                    } else {
+                        Vec::new()
+                    };
+                    serde_json::json!([
+                        pane.cwd,
+                        pane.label,
+                        pane.agent.agent,
+                        pane.agent.session_id,
+                        pane.agent.profile,
+                        pane.agent.launch,
+                        replay,
+                    ])
+                })
+                .collect::<Vec<_>>();
+            serde_json::json!([window.index, window.label, panes])
+        })
+        .collect::<Vec<_>>();
+    serde_json::Value::Array(windows)
+}
+fn store(newest: &Path, history: &Path, snapshot: &Snapshot) -> io::Result<()> {
+    let previous = match fs::read(newest) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    // An unreadable newest slot is replaced, as before history existed.
+    let changed = previous.filter(|bytes| {
+        serde_json::from_slice::<Snapshot>(bytes)
+            .is_ok_and(|saved| fingerprint(&saved) != fingerprint(snapshot))
+    });
+    if let Some(bytes) = changed {
+        for slot in (1..SLOTS - 1).rev() {
+            match fs::rename(
+                slot_path(newest, history, slot),
+                slot_path(newest, history, slot + 1),
+            ) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                _ => {}
+            }
+        }
+        rt::atomic_write(&slot_path(newest, history, 1), &bytes)?;
+    }
+    rt::atomic_write(newest, &serde_json::to_vec(snapshot)?)
 }
 pub fn monitor_lock(options: &Options) -> io::Result<PathBuf> {
     let session = if options.session.starts_with('$') {
@@ -477,7 +555,12 @@ fn save_for_session(
         ));
     }
     if force || recoverable(&snapshot) {
-        rt::atomic_write(&path(options)?, &serde_json::to_vec(&snapshot)?)?;
+        // Monitor, preview and command saves all rotate the same slot files.
+        let _lock = rt::lock(
+            &rt::state_root()?.join(format!("{}.snapshot.lock", namespace(options)?)),
+            false,
+        )?;
+        store(&path(options)?, &history(options)?, &snapshot)?;
     }
     Ok(snapshot)
 }
@@ -638,14 +721,22 @@ fn publish_availability(
     Ok(())
 }
 fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> {
-    let mut snapshot: Snapshot =
-        serde_json::from_slice(&fs::read(path(options)?).map_err(|error| {
-            if error.kind() == io::ErrorKind::NotFound {
+    let (newest, history) = (path(options)?, history(options)?);
+    let slot = options.snapshot;
+    let mut snapshot: Snapshot = serde_json::from_slice(
+        &fs::read(slot_path(&newest, &history, slot)).map_err(|error| {
+            if error.kind() != io::ErrorKind::NotFound {
+                error
+            } else if slot == 0 {
                 io::Error::other("No saved recovery snapshot exists for this session.")
             } else {
-                error
+                io::Error::other(format!(
+                    "Saved recovery snapshot {} does not exist.",
+                    slot + 1
+                ))
             }
-        })?)?;
+        })?,
+    )?;
     for pane in snapshot
         .windows
         .iter_mut()
@@ -716,6 +807,8 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
     let destination = destination(options, &snapshot.session)?;
     Ok(Plan {
         snapshot,
+        slot,
+        slots: count_slots(&newest, &history),
         active,
         eligible,
         commands,
@@ -723,8 +816,23 @@ fn plan_with_reader(options: &Options, reader: &mut Reader) -> io::Result<Plan> 
         destination,
     })
 }
-pub fn restore(options: &Options, selected: &HashSet<String>) -> io::Result<Option<String>> {
+// The monitor may rotate the slots while the preview is open. Comparing the
+// fingerprint, not saved_at, lets the in-place refresh of the newest slot pass.
+fn unchanged(shown: Option<&Snapshot>, current: &Snapshot) -> io::Result<()> {
+    match shown {
+        Some(shown) if fingerprint(shown) != fingerprint(current) => Err(io::Error::other(
+            "The saved snapshots changed since the preview loaded. Check the preview and restore again.",
+        )),
+        _ => Ok(()),
+    }
+}
+pub fn restore(
+    options: &Options,
+    selected: &HashSet<String>,
+    shown: Option<&Snapshot>,
+) -> io::Result<Option<String>> {
     let plan = plan(options)?;
+    unchanged(shown, &plan.snapshot)?;
     if !selected.iter().all(|pane| plan.commands.contains(pane)) {
         return Err(io::Error::other(
             "A selected command is unavailable or still running. Refresh the preview.",
@@ -942,6 +1050,90 @@ fn restore_pane(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn agent_snapshot(identifiers: &[&str]) -> Snapshot {
+        Snapshot {
+            version: 1,
+            session: "work".into(),
+            windows: vec![Window {
+                panes: identifiers
+                    .iter()
+                    .map(|identifier| Pane {
+                        cwd: "/project".into(),
+                        agent: Agent {
+                            agent: "claude".into(),
+                            session_id: (*identifier).into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn fingerprint_ignores_volatile_fields_and_sees_structural_changes() {
+        let base = agent_snapshot(&["one"]);
+        let mut volatile = base.clone();
+        volatile.saved_at = 99.0;
+        volatile.windows[0].name = "renamed".into();
+        volatile.windows[0].layout = "other-layout".into();
+        volatile.windows[0].panes[0].title = "Thinking".into();
+        volatile.windows[0].panes[0].agent.state = "working".into();
+        volatile.windows[0].panes[0].agent.pid = 42;
+        volatile.windows[0].panes[0].agent.updated = 7.0;
+        volatile.windows[0].panes.push(Pane {
+            sidebar: true,
+            ..Default::default()
+        });
+        assert_eq!(fingerprint(&base), fingerprint(&volatile));
+        assert_ne!(fingerprint(&base), fingerprint(&agent_snapshot(&["two"])));
+        assert_ne!(
+            fingerprint(&base),
+            fingerprint(&agent_snapshot(&["one", "two"]))
+        );
+    }
+    #[test]
+    fn restore_refuses_a_snapshot_that_rotated_after_the_preview() {
+        let shown = agent_snapshot(&["one"]);
+        let mut refreshed = shown.clone();
+        refreshed.saved_at = 42.0;
+        assert!(unchanged(None, &agent_snapshot(&["two"])).is_ok());
+        assert!(unchanged(Some(&shown), &refreshed).is_ok());
+        assert!(
+            unchanged(Some(&shown), &agent_snapshot(&["two"]))
+                .unwrap_err()
+                .to_string()
+                .contains("restore again")
+        );
+    }
+    #[test]
+    fn store_keeps_five_distinct_snapshots_newest_first() {
+        let root = std::env::temp_dir().join(format!("recovery-slots-{}", rt::stamp()));
+        let newest = root.join("snapshots/work.json");
+        let history = root.join("snapshot-history/work");
+        for index in 0..7 {
+            store(&newest, &history, &agent_snapshot(&[&format!("s{index}")])).unwrap();
+        }
+        let mut repeated = agent_snapshot(&["s6"]);
+        repeated.saved_at = 5.0;
+        store(&newest, &history, &repeated).unwrap();
+        assert_eq!(count_slots(&newest, &history), SLOTS);
+        let identifiers = (0..SLOTS)
+            .map(|slot| {
+                let snapshot: Snapshot =
+                    serde_json::from_slice(&fs::read(slot_path(&newest, &history, slot)).unwrap())
+                        .unwrap();
+                snapshot.windows[0].panes[0].agent.session_id.clone()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(identifiers, ["s6", "s5", "s4", "s3", "s2"]);
+        let latest: Snapshot = serde_json::from_slice(&fs::read(&newest).unwrap()).unwrap();
+        assert_eq!(latest.saved_at, 5.0);
+        assert!(!history.join(format!("{SLOTS}.json")).exists());
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn codex_switch_uses_the_current_title_instead_of_the_launch_identifier() {
         let profile = std::env::temp_dir().join(format!("recovery-switch-{}", rt::stamp()));

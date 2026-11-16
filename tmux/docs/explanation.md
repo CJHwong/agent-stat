@@ -90,7 +90,8 @@ The monitor saves about every ten seconds while the sidebar runs.
 A fresh empty shell after a restart does not erase the last recoverable snapshot.
 Internal sidebar helpers do not count as recoverable work during startup.
 Once the monitor sees recoverable work, later snapshots follow the session's current state, including deliberate closures.
-A closed window therefore disappears from later snapshots. Recovery is a recent session snapshot, not an archive of every closed program.
+A closed window therefore disappears from later snapshots. The four previous distinct snapshots still hold it until newer changes push it out.
+Recovery is a short recent history, not an archive of every closed program.
 Each monitor keeps the original server and session identity. It exits if a restarted server reuses the socket and session name.
 The writer checks this identity again before saving. An old monitor cannot replace the restart snapshot with an empty shell.
 Tests stop and restart isolated tmux servers. They check both monitor identity and snapshot preservation while a startup helper runs.

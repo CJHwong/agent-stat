@@ -78,7 +78,8 @@ Restore all reruns eligible saved commands. Review the action list before restor
 4. Press `r`, or click **Restore all**, to create `recovered-<session>`.
 
 Press `s` or click **Save snapshot** to save all current windows and refresh the preview.
-Saving replaces the latest snapshot for this session. Save before stopping the tmux server.
+Saving adds a snapshot when the session changed, and keeps the five newest. Save before stopping the tmux server.
+Press `1` to `5`, or Left and Right, to show an older snapshot. Restore uses the snapshot shown.
 The preview shows **Snapshot saved.** after a successful save.
 
 Restore creates a separate session with all saved windows. It keeps their names and pane layouts.

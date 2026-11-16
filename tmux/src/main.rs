@@ -32,6 +32,7 @@ pub struct Options {
     client: Option<String>,
     owner_window: String,
     rerun: HashSet<String>,
+    snapshot: usize,
     input: Option<String>,
     detached_actions: bool,
 }
@@ -49,7 +50,8 @@ fn options() -> io::Result<Options> {
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
-            "--socket" | "--session" | "--pane" | "--client" | "--rerun" | "--input" => {
+            "--socket" | "--session" | "--pane" | "--client" | "--rerun" | "--input"
+            | "--snapshot" => {
                 let value = arguments
                     .next()
                     .ok_or_else(|| io::Error::other(format!("Missing value for {argument}")))?;
@@ -59,6 +61,19 @@ fn options() -> io::Result<Options> {
                     "--pane" => result.pane = Some(value),
                     "--client" => result.client = Some(value),
                     "--input" => result.input = Some(value),
+                    "--snapshot" => {
+                        result.snapshot = value
+                            .parse::<usize>()
+                            .ok()
+                            .filter(|number| (1..=recovery::SLOTS).contains(number))
+                            .ok_or_else(|| {
+                                io::Error::other(format!(
+                                    "--snapshot takes 1 (newest) to {}",
+                                    recovery::SLOTS
+                                ))
+                            })?
+                            - 1
+                    }
                     _ => {
                         result.rerun.insert(value);
                     }
@@ -210,7 +225,7 @@ fn run() -> io::Result<()> {
     }
     if env::args().any(|argument| matches!(argument.as_str(), "--help" | "-h")) {
         println!(
-            "agent-stat-tmux install [--home DIR] [--shared] [--apply] [--reload] [--restart]\nagent-stat-tmux --socket PATH --session NAME [--pane ID] ACTION\nActions: render, search-ui, enable, toggle, menu, snapshot, plan, restore, recover\nrestore --rerun PANE explicitly reruns one saved command."
+            "agent-stat-tmux install [--home DIR] [--shared] [--apply] [--reload] [--restart]\nagent-stat-tmux --socket PATH --session NAME [--pane ID] ACTION\nActions: render, search-ui, enable, toggle, menu, snapshot, plan, restore, recover\nrestore --rerun PANE explicitly reruns one saved command.\nplan and restore --snapshot N pick saved snapshot N, 1 is the newest (default) and 5 the oldest."
         );
         return Ok(());
     }
@@ -229,7 +244,7 @@ fn run() -> io::Result<()> {
         "monitor"=>recovery::monitor(&options),
         "snapshot"=>{let mut reader=events::Reader::new(options.event_root.clone(),options.host.clone());println!("{}",serde_json::to_string(&recovery::save(&options,&mut reader,true)?)?);Ok(())}
         "plan"=>{println!("{}",serde_json::to_string(&recovery::plan(&options)?)?);Ok(())}
-        "restore"=>{if let Some(name)=recovery::restore(&options,&options.rerun)?{println!("{name}");}else{println!("Nothing to restore (already running or no commands selected)");}Ok(())}
+        "restore"=>{if let Some(name)=recovery::restore(&options,&options.rerun,None)?{println!("{name}");}else{println!("Nothing to restore (already running or no commands selected)");}Ok(())}
         action=>actions::run(&options,action,options.pane.as_deref()),
     }
 }

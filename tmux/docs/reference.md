@@ -30,8 +30,9 @@ If you use another prefix, substitute it for Ctrl+b.
 | Ctrl+b / or sidebar Search | Search titles, folders, and commands. |
 | Ctrl+b f | Show the full title, folder, and command. |
 | Ctrl+b r | Open the recovery preview. |
-| `s` in recovery | Save all current windows and replace this session's latest snapshot. |
-| `r` in recovery | Restore all eligible saved conversations and commands. |
+| `s` in recovery | Save all current windows as this session's newest snapshot. |
+| `1` to `5`, Left, Right in recovery | Show another of the five saved snapshots. `1` is the newest. |
+| `r` in recovery | Restore all eligible saved conversations and commands from the snapshot shown. |
 | Ctrl+b Tab | Toggle the sidebar. |
 | Ctrl+b z | Toggle full zoom for the content pane. |
 | Ctrl+b ? | Show shortcuts. Escape or `q` closes the list. |
@@ -101,6 +102,10 @@ Colors follow the macOS panel's meanings; terminal shades depend on the palette.
 ## Recovery limits
 
 Snapshots record layouts, folders, labels, auto zoom settings, conversation identifiers, profiles, and exact foreground arguments about every ten seconds.
+Each session keeps its five newest distinct snapshots.
+A save takes a new slot only when windows, folders, labels, conversations, profiles, launch options, or rerunnable commands changed.
+Otherwise it updates the newest slot. Titles, agent states, window names, and layouts alone do not take a slot.
+The recovery indicator reflects the newest snapshot only.
 The sidebar shows Recover only when saved work is available; F1 and Ctrl+b r remain available.
 Restore checks running processes again and skips conversations already running in the source session.
 Claude's native session registry can provide recovery metadata without supplying status dots.
@@ -151,6 +156,7 @@ Outside tmux, or for another server, also supply `--socket PATH`.
 | `plan` | Print recovery eligibility. |
 | `restore` | Resume eligible saved conversations. |
 | `restore --rerun PANE` | Also rerun the selected stopped command. Repeat `--rerun` for several commands. |
+| `plan --snapshot N`, `restore --snapshot N` | Use saved snapshot N. `1` is the newest and the default, `5` the oldest. |
 
 ## Files and environment
 
@@ -159,7 +165,8 @@ Outside tmux, or for another server, also supply `--socket PATH`.
 | `~/.agents/tmux/agent-stat-tmux` | Executable and installer. |
 | `~/.config/tmux/window-sidebar.conf` | Generated bindings and hooks. |
 | `~/.local/state/tmux-sidebar/sidebar.log` | Errors. |
-| `~/.local/state/tmux-sidebar/snapshots/` | Private recovery snapshots. |
+| `~/.local/state/tmux-sidebar/snapshots/` | The newest private recovery snapshot of each session. |
+| `~/.local/state/tmux-sidebar/snapshot-history/` | The four older snapshots of each session, `1.json` is the newest of them. |
 | `~/.local/state/tmux-sidebar/backups/` | Installation backups. |
 | `~/.local/state/agent-stat/hosts/` | Shared status events. |
 | `/tmp/agent-stat-tmux-<user-id>/shared-<hash>.*` | Private shared socket, service identity, and locks for each server. |

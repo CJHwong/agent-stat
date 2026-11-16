@@ -2956,7 +2956,7 @@ fn recovery_preview_saves_and_refreshes_all_windows() {
     client.send(b"\x02r");
     client.expect("No saved recovery snapshot");
     client.send(b"\0");
-    client.expect("Saving replaces the latest snapshot");
+    client.expect("Five are kept.");
     client.send(b"s");
     client.expect("Snapshot saved.");
     client.send(b"\0");
@@ -2985,11 +2985,106 @@ fn recovery_preview_saves_and_refreshes_all_windows() {
     let saved: serde_json::Value = serde_json::from_slice(&fs::read(snapshot).unwrap()).unwrap();
     assert_eq!(saved["windows"].as_array().unwrap().len(), 2);
     assert_eq!(saved["windows"][1]["name"], "second-saved-window");
+    client.send(b"\0");
+    client.expect("Snapshot 1 of 2");
+    client.send(b"2");
+    client.expect("Snapshot 2 of 2");
+    client.send(b"\0");
+    client.expect("1 window to restore");
+    let history = fs::read_dir(sandbox.root.join("state/snapshot-history"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let older: serde_json::Value =
+        serde_json::from_slice(&fs::read(history.join("1.json")).unwrap()).unwrap();
+    assert_eq!(older["windows"].as_array().unwrap().len(), 1);
+    let plan = success(
+        sandbox
+            .command("source", "plan")
+            .args(["--snapshot", "2"])
+            .output()
+            .unwrap(),
+    );
+    let plan: serde_json::Value = serde_json::from_str(&plan).unwrap();
+    assert_eq!(plan["snapshot"]["windows"].as_array().unwrap().len(), 1);
+    assert_eq!(plan["slot"], 1);
+    assert_eq!(plan["slots"], 2);
     assert_eq!(
         sandbox.tmux(&["list-sessions", "-F", "#{session_name}"]),
         "source"
     );
     client.send(b"\x1b");
+}
+
+#[test]
+fn recovery_preview_restores_an_older_snapshot() {
+    let sandbox = Sandbox::new();
+    let worker = worker(&sandbox.root);
+    let marker = sandbox.root.join("replayed");
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start(
+        "source",
+        &format!(
+            "{} {} 'older state'",
+            quote(worker.to_str().unwrap()),
+            quote(marker.to_str().unwrap())
+        ),
+    );
+    wait_for_file(&marker);
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    let content = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{pane_id}"]);
+    success(sandbox.command("source", "enable").output().unwrap());
+    success(sandbox.command("source", "snapshot").output().unwrap());
+    sandbox.tmux(&["new-window", "-d", "-t", "source:1", "/bin/sh"]);
+    success(sandbox.command("source", "snapshot").output().unwrap());
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &content, "sleep 120"]);
+    fs::remove_file(&marker).unwrap();
+    let mut client = Client::attach(&sandbox, "source");
+    client.drain(Duration::from_millis(800));
+    client.send(b"\x02r");
+    client.expect("Snapshot 1 of 2");
+    client.send(b"2");
+    client.expect("Snapshot 2 of 2");
+    client.send(b"r");
+    wait_for_file(&marker);
+    client.wait("recovered session", || {
+        sandbox
+            .tmux(&["list-sessions", "-F", "#{session_name}"])
+            .contains("recovered-source")
+    });
+    assert_eq!(
+        sandbox
+            .tmux(&[
+                "list-windows",
+                "-t",
+                "recovered-source",
+                "-F",
+                "#{window_id}"
+            ])
+            .lines()
+            .count(),
+        1,
+        "The older snapshot holds one window; the newest holds two"
+    );
 }
 
 #[test]
