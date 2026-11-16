@@ -30,8 +30,8 @@ changing the code. Keep that split.
 | `python3 tests/live-probe.py` | A real `claude` and a real `codex` against throwaway config trees. Points `HOME` at a temp tree. |
 | `python3 tests/close-probe.py [claude\|codex]` | What a closed session reports, under a real pty. |
 | `python3 scripts/demo-events.py /tmp/demo` | A synthetic events tree covering every state, plus a second machine. |
-| `.build/AgentStat.app/Contents/MacOS/AgentStat --render out.png` | Draw the panel to a PNG. The system material does not draw offscreen, so it comes out opaque. |
-| `.build/AgentStat.app/Contents/MacOS/AgentStat --plan-jump <folder> [tty]` | Print what a click would do, without touching anything. Add the tty to see the exact match a new record produces. |
+| `".build/Agent Board.app/Contents/MacOS/AgentStat" --render out.png` | Draw the panel to a PNG. The system material does not draw offscreen, so it comes out opaque. |
+| `".build/Agent Board.app/Contents/MacOS/AgentStat" --plan-jump <folder> [tty]` | Print what a click would do, without touching anything. Add the tty to see the exact match a new record produces. |
 
 ## Rules that are not style
 

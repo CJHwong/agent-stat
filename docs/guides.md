@@ -13,11 +13,11 @@ The optional tmux component is not a build dependency.
 
 1. Open a terminal in the repository root.
 2. Run `bash build.sh`.
-3. If AgentStat is running, quit it from its menu bar icon.
-4. Run `open .build/AgentStat.app`.
+3. If Agent Board is running, quit it from its menu bar icon.
+4. Run `open ".build/Agent Board.app"`.
 5. Check that its icon appears in the menu bar.
 
-The build compiles `src/*.swift` with `swiftc` and creates `.build/AgentStat.app`.
+The build compiles `src/*.swift` with `swiftc` and creates `.build/Agent Board.app`.
 It needs no Xcode project or separate package installation.
 It uses an available Apple Development signing identity, or attempts local signing.
 Set `CODESIGN_IDENTITY` to choose a signing identity.

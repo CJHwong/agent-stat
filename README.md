@@ -45,7 +45,7 @@ Run these commands from the repository root:
 
 ```sh
 bash build.sh
-open .build/AgentStat.app
+open ".build/Agent Board.app"
 ```
 
 The build uses `swiftc` directly. It needs no Xcode project.

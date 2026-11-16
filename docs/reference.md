@@ -105,8 +105,8 @@ If the index is missing or unreadable, the hook still writes the event without a
 
 | Name | What it does |
 |---|---|
-| `bash build.sh` | Builds `.build/AgentStat.app`. |
-| `open .build/AgentStat.app` | Opens the built macOS app. |
+| `bash build.sh` | Builds `.build/Agent Board.app`. |
+| `open ".build/Agent Board.app"` | Opens the built macOS app. |
 | `python3 install.py --apply` | Installs shared hooks and the stream helper on this host. |
 | `tmux/target/release/agent-stat-tmux install` | Prints the terminal installation plan without writes. |
 | `tmux/target/release/agent-stat-tmux install --shared --apply --reload --restart` | Installs one shared renderer per tmux server; preserves running content processes. |

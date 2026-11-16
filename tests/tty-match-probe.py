@@ -17,7 +17,7 @@ from pathlib import Path
 import subprocess
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-APP = REPOSITORY / ".build/AgentStat.app/Contents/MacOS/AgentStat"
+APP = REPOSITORY / ".build/Agent Board.app/Contents/MacOS/AgentStat"
 STATE = Path(os.environ.get("AGENT_STAT_DIR", Path.home() / ".local/state/agent-stat"))
 FIELD = "\x1f"
 
