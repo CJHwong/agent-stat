@@ -52,10 +52,10 @@ extension AppDelegate {
             let elapsed = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
             Log.write("jump \(session.key.host)/\(session.key.id) "
                       + "plan=\(result.summary) result=\(result.outcome.summary) elapsed=\(elapsed)ms")
-            if result.outcome.succeeded {
-                self.store.acknowledge(receipt)
-                self.remember()
-            }
+            // The click is the act of dealing with the row. A failed or refused jump
+            // still means you saw it, and a red dot that stays only invites a retry.
+            self.store.acknowledge(receipt)
+            self.remember()
             if case .pick = result.outcome { self.navigation.receipt = receipt }
             self.show(result.outcome)
         })

@@ -159,17 +159,16 @@ func testNavigationCompletionOrder() {
 }
 
 func testNavigationAttentionReceipt() {
-    print("navigation: successful jumps acknowledge only the clicked event")
+    print("navigation: a jump acknowledges only the clicked event")
     let store = SessionStore(localHost: HOST)
     let key = SessionKey(host: HOST, id: "attention")
     let first = decode(#"{"ts":100,"event":"Stop","session":"attention"}"#)
     store.apply(first, host: HOST, position: EventPosition(file: "host.jsonl", offset: 100))
     let receipt = store.attentionReceipt(for: store.sessions[key]!, now: 100)
     check(!store.isAcknowledged(store.sessions[key]!), "a pending jump does not clear attention")
-    check(!JumpOutcome.failed(message: "synthetic failure").succeeded, "a failed jump cannot acknowledge attention")
     store.apply(first, host: HOST, position: EventPosition(file: "host.jsonl", offset: 200))
     store.acknowledge(receipt)
-    check(!store.isAcknowledged(store.sessions[key]!), "a new event remains unread when an old jump succeeds")
+    check(!store.isAcknowledged(store.sessions[key]!), "a new event remains unread when an old jump finishes")
 }
 
 func testNavigationShellQuoting() {

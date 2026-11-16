@@ -47,8 +47,8 @@ MainActor.assumeIsolated {
     let failedDeadline = Date(timeIntervalSinceNow: 2)
     while (delegate.model.status?.hasPrefix("Jump to") ?? true) && Date() < failedDeadline { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02)) }
     precondition(delegate.model.status?.hasPrefix("Jump to") == false, "a failed jump must report its result")
-    precondition(!delegate.store.isAcknowledged(missing), "a failed jump must retain attention")
-    print("PASS a failed jump retains the session attention marker")
+    precondition(delegate.store.isAcknowledged(missing), "a failed jump must clear attention")
+    print("PASS a failed jump clears the session attention marker")
     delegate.jump(to: delegate.store.sessions[SessionKey(host: "slow", id: "slow")]!)
     delegate.jump(to: delegate.store.sessions[SessionKey(host: "fast", id: "fast")]!)
     RunLoop.main.run(until: Date(timeIntervalSinceNow: 2))

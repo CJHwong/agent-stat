@@ -63,8 +63,8 @@ does a session in tmux, which jumps to its pane instead.
 The first click may raise a macOS prompt asking to let the panel control Ghostty. That
 is the automation permission, and the tab switch needs it.
 
-A successful jump acknowledges the clicked event and stops its badge count.
-A failed jump or unfinished tab choice keeps the attention marker.
+A click acknowledges the clicked event and stops its badge count.
+This also applies when the jump fails or opens the tab choice.
 An event that arrives during the jump remains unread.
 The app remembers acknowledgements across restarts.
 
