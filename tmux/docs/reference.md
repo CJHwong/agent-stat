@@ -108,6 +108,8 @@ Otherwise it updates the newest slot. Titles, agent states, window names, and la
 The recovery indicator reflects the newest snapshot only.
 The sidebar shows Recover only when saved work is available; F1 and Ctrl+b r remain available.
 Restore checks running processes again and skips conversations already running in the source session.
+Restore sets `CLAUDE_CONFIG_DIR` or `CODEX_HOME` only for a profile outside the default `~/.claude` or `~/.codex`.
+Claude reads another keychain entry when `CLAUDE_CONFIG_DIR` is set, even to the default folder, so the resumed conversation would start logged out.
 Claude's native session registry can provide recovery metadata without supplying status dots.
 Codex recovery also accepts a unique native name from the current terminal title with matching transcript metadata.
 This fallback uses the current conversation name instead of an ID retained in the launch command.

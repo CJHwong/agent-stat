@@ -642,7 +642,13 @@ pub fn resume(agent: &Agent) -> Option<String> {
         "CODEX_HOME"
     };
     let mut arguments = vec!["env".into()];
-    if !agent.profile.is_empty() {
+    // A snapshot cannot tell an unset variable from the default folder. Setting
+    // CLAUDE_CONFIG_DIR, even to the default, makes Claude read another keychain
+    // entry, so the resumed conversation starts logged out.
+    let default = rt::home()
+        .ok()
+        .map(|home| home.join(format!(".{}", agent.agent)));
+    if !agent.profile.is_empty() && default.as_deref() != Some(Path::new(&agent.profile)) {
         arguments.push(format!("{variable}={}", agent.profile));
     }
     if agent.launch.launcher.is_empty() {
@@ -1281,6 +1287,38 @@ mod tests {
         assert_eq!(
             resume(&agent).unwrap(),
             "'env' 'relay' 'launch' 'claude' '--model' 'local-model:latest' '--' '--resume' 'saved-session' '--effort' 'high'"
+        );
+    }
+    #[test]
+    fn resume_omits_the_default_profile_variable() {
+        let home = rt::home().unwrap();
+        let mut agent = Agent {
+            agent: "claude".into(),
+            session_id: "saved-session".into(),
+            profile: home.join(".claude").to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        // Claude reads another keychain entry when CLAUDE_CONFIG_DIR is set,
+        // even to the default folder, and the restored conversation is logged out.
+        assert_eq!(
+            resume(&agent).unwrap(),
+            "'env' 'claude' '--resume' 'saved-session'"
+        );
+        agent.profile = format!("{}/", agent.profile);
+        assert_eq!(
+            resume(&agent).unwrap(),
+            "'env' 'claude' '--resume' 'saved-session'"
+        );
+        agent.profile = "/work/claude-profile".into();
+        assert_eq!(
+            resume(&agent).unwrap(),
+            "'env' 'CLAUDE_CONFIG_DIR=/work/claude-profile' 'claude' '--resume' 'saved-session'"
+        );
+        agent.agent = "codex".into();
+        agent.profile = home.join(".codex").to_string_lossy().into_owned();
+        assert_eq!(
+            resume(&agent).unwrap(),
+            "'env' 'codex' 'resume' 'saved-session'"
         );
     }
     #[test]
