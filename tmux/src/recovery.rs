@@ -945,7 +945,7 @@ fn restore_window(
                 ],
             )?
         };
-        restore_pane(options, &pane_id, pane, active, selected)?;
+        let pane_id = restore_pane(options, window_id, &pane_id, pane, active, selected)?;
         panes.push(pane_id);
         model::tmux(
             &options.socket,
@@ -991,11 +991,16 @@ fn restore_window(
 }
 fn restore_pane(
     options: &Options,
+    window_id: &str,
     pane_id: &str,
     pane: &Pane,
     active: &mut HashSet<String>,
     selected: &HashSet<String>,
-) -> io::Result<()> {
+) -> io::Result<String> {
+    if pane.sidebar && crate::shared::enabled(options)? {
+        // A separate renderer bypasses the shared service and its wheel limit.
+        return crate::shared::replace_pane(options, pane_id, window_id);
+    }
     if pane.sidebar {
         model::tmux(
             &options.socket,
@@ -1011,7 +1016,7 @@ fn restore_pane(
                 &rt::command(options, "render", None)?,
             ],
         )?;
-        return Ok(());
+        return Ok(pane_id.to_owned());
     }
     if !pane.label.is_empty() {
         model::tmux(
@@ -1050,7 +1055,7 @@ fn restore_pane(
             ],
         )?;
     }
-    Ok(())
+    Ok(pane_id.to_owned())
 }
 
 #[cfg(test)]

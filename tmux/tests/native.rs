@@ -889,6 +889,76 @@ fn exact_arguments_require_opt_in_and_legacy_snapshots_still_restore() {
     assert_eq!(snapshot["version"], 1);
 }
 
+#[test]
+fn shared_recovery_restores_sidebars_without_separate_renderers() {
+    let sandbox = Sandbox::new();
+    success(
+        Command::new(binary())
+            .args([
+                "install",
+                "--home",
+                sandbox.root.to_str().unwrap(),
+                "--apply",
+                "--shared",
+            ])
+            .output()
+            .unwrap(),
+    );
+    sandbox.start("source", "sleep 120");
+    sandbox.tmux(&[
+        "source-file",
+        sandbox
+            .root
+            .join(".config/tmux/window-sidebar.conf")
+            .to_str()
+            .unwrap(),
+    ]);
+    sandbox.tmux(&["new-window", "-d", "-t", "source:", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    let content = sandbox.tmux(&["display-message", "-p", "-t", "source:", "#{pane_id}"]);
+    success(sandbox.command("source", "enable").output().unwrap());
+    success(sandbox.command("source", "snapshot").output().unwrap());
+    sandbox.tmux(&["kill-session", "-t", "source"]);
+    let mut restore = sandbox.command("source", "restore");
+    restore.args(["--rerun", &content]);
+    assert!(success(restore.output().unwrap()).contains("recovered-source"));
+    let sidebars = sandbox.tmux(&[
+        "list-panes",
+        "-s",
+        "-t",
+        "recovered-source",
+        "-F",
+        "#{window_id}\t#{@window_sidebar}\t#{@shared_sidebar}\t#{pane_start_command}",
+    ]);
+    let sidebars = sidebars
+        .lines()
+        .filter(|row| row.split('\t').nth(1) == Some("1"))
+        .collect::<Vec<_>>();
+    assert_eq!(sidebars.len(), 2, "one sidebar per window: {sidebars:?}");
+    for row in sidebars {
+        let fields = row.split('\t').collect::<Vec<_>>();
+        assert_eq!(
+            fields[2], "1",
+            "a restored sidebar joins the shared renderer: {row}"
+        );
+        assert!(!fields[3].contains("render"), "no separate renderer: {row}");
+    }
+    let mut client = Client::attach(&sandbox, "recovered-source");
+    client.wait("recovered shared sidebar draws", || {
+        let sidebar = sandbox.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "recovered-source:",
+            "#{@window_sidebar_pane}",
+        ]);
+        !sidebar.is_empty()
+            && sandbox
+                .tmux(&["capture-pane", "-p", "-t", &sidebar])
+                .contains("+ New")
+    });
+}
+
 fn event_file(sandbox: &Sandbox) -> PathBuf {
     let host = success(Command::new("uname").arg("-n").output().unwrap())
         .trim()
