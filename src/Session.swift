@@ -148,10 +148,13 @@ struct Session {
             // process, taken in copy().
             state = .starting
             startSource = record.source
+            // Rhapsody resumes one session id for its next run. That run is not over.
+            runEnded = false
             tool = nil
             toolStartedAt = nil
         case "UserPromptSubmit":
             state = .running
+            runEnded = false
             tool = nil
             toolStartedAt = nil
         case "PreToolUse":

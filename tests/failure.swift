@@ -196,6 +196,22 @@ func testRunEnd() {
     store.acknowledge(key, now: later)
     checkEqual(store.visible(now: later).count, 0, "a click clears it")
 
+    // Rhapsody resumes one codex session for its next run. That run is live until
+    // the bridge ends it too, even after its own Stop.
+    let next = later + 10
+    store.apply(decode(#"{"ts":\#(next),"event":"SessionStart","agent":"codex","agent_pid":55063,"session":"\#(id)","cwd":"/w/runner","tmux":"%1760"}"#),
+                host: other)
+    store.apply(decode(#"{"ts":\#(next + 1),"event":"UserPromptSubmit","session":"\#(id)"}"#), host: other)
+    store.apply(decode(#"{"ts":\#(next + 2),"event":"Stop","session":"\#(id)"}"#), host: other)
+    store.reapRemote(host: other, alive: [id: true], now: next + 3)
+    let routes = try! Routes.decode(Data(#"{"\#(other)": {"tmux": ["ssh", "peer", "tmux"]}}"#.utf8))
+    check(!store.sessions[key]!.finishedRun, "a resumed run is not the run the bridge ended")
+    guard case .route(_, _, let pane, _, _, _) = Jumper.plan(for: store.sessions[key]!, routes: routes) else {
+        check(false, "a click on the resumed run goes to its new pane")
+        return
+    }
+    checkEqual(pane ?? "-", "%1760", "the click uses the resumed run's pane")
+
     // A Claude run the bridge ended stays the same way. Without the bridge record,
     // a Claude whose process is gone after a Stop is a closed terminal.
     let claude = SessionStore(localHost: HOST)

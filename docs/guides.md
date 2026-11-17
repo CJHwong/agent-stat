@@ -168,7 +168,11 @@ answer and stays until you click it. If the run ended mid-turn, the row ends and
 after ten seconds.
 
 Send the line for every way a run can finish. A run that ends without it clears a minute
-after its process exits, before you read its answer.
+after its process exits, before you read its answer. That suits an unattended scheduled
+job: nobody waits on its answer, so its row may clear on its own.
+
+An orchestrator can resume the same session id for its next run. A new prompt starts a
+new run, so that row works again until the bridge ends it too.
 
 ## Start it at login
 
