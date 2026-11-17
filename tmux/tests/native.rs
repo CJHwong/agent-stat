@@ -5,6 +5,24 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+/// How long a check waits for something it expects. A passing check returns as soon
+/// as it sees it, so this only bounds a failure. Under load from other work, a
+/// shorter bound failed checks that were only slow.
+const SETTLE: Duration = Duration::from_secs(15);
+
+/// Two suites at once measure each other: the latency checks then time the other
+/// suite. The first suite holds this lock and a second one waits for it.
+fn hold_suite_lock() {
+    static LOCK: std::sync::OnceLock<fs::File> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| {
+        use std::os::fd::AsRawFd;
+        let file =
+            fs::File::create(std::env::temp_dir().join("agent-stat-native-tests.lock")).unwrap();
+        assert_eq!(unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) }, 0);
+        file
+    });
+}
+
 fn binary() -> &'static str {
     env!("CARGO_BIN_EXE_agent-stat-tmux")
 }
@@ -34,6 +52,7 @@ impl Sandbox {
         ])
     }
     fn new() -> Self {
+        hold_suite_lock();
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -837,7 +856,8 @@ fn worker(root: &Path) -> PathBuf {
     output
 }
 fn wait_for_file(path: &Path) {
-    for _ in 0..100 {
+    let end = std::time::Instant::now() + SETTLE;
+    while std::time::Instant::now() < end {
         if path.exists() {
             return;
         }
@@ -2057,10 +2077,7 @@ impl Client {
                 Ok(0) => panic!("The terminal accepted no input"),
                 Ok(count) => remaining = &remaining[count..],
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    assert!(
-                        started.elapsed() < Duration::from_secs(4),
-                        "Terminal input stayed blocked"
-                    );
+                    assert!(started.elapsed() < SETTLE, "Terminal input stayed blocked");
                     std::thread::sleep(Duration::from_millis(2));
                 }
                 Err(error) => panic!("Terminal input: {error}"),
@@ -2132,7 +2149,7 @@ impl Client {
         output
     }
     fn wait(&mut self, description: &str, mut predicate: impl FnMut() -> bool) {
-        let end = std::time::Instant::now() + Duration::from_secs(4);
+        let end = std::time::Instant::now() + SETTLE;
         while std::time::Instant::now() < end {
             if predicate() {
                 return;
@@ -2144,7 +2161,7 @@ impl Client {
     fn expect(&mut self, text: &str) -> Duration {
         let started = std::time::Instant::now();
         let mut output = Vec::new();
-        while started.elapsed() < Duration::from_secs(4) {
+        while started.elapsed() < SETTLE {
             output.extend(self.drain(Duration::from_millis(5)));
             if output
                 .windows(text.len())
@@ -2636,7 +2653,7 @@ fn monitor_uses_requested_session_instead_of_inherited_pane() {
             .output()
             .unwrap(),
     );
-    let end = std::time::Instant::now() + Duration::from_secs(4);
+    let end = std::time::Instant::now() + SETTLE;
     let mut monitors = Vec::new();
     while std::time::Instant::now() < end {
         monitors = fs::read_dir(sandbox.root.join("state"))
@@ -3494,7 +3511,7 @@ fn old_monitor_exits_when_the_socket_and_session_name_are_reused() {
         unsafe { libc::kill(monitor.0.id() as i32, libc::SIGCONT) },
         0
     );
-    let until = std::time::Instant::now() + Duration::from_secs(4);
+    let until = std::time::Instant::now() + SETTLE;
     while monitor.0.try_wait().unwrap().is_none() && std::time::Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -3552,7 +3569,7 @@ fn server_restart_keeps_recovery_while_the_startup_helper_runs() {
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(4);
+    let deadline = std::time::Instant::now() + SETTLE;
     let mut available = String::new();
     while available.is_empty() && std::time::Instant::now() < deadline {
         available = sandbox.tmux(&[
@@ -3603,7 +3620,7 @@ fn monitor_preserves_reboot_snapshots_and_records_deliberate_closures() {
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    let ready_deadline = std::time::Instant::now() + Duration::from_secs(4);
+    let ready_deadline = std::time::Instant::now() + SETTLE;
     while fs::read(&path).unwrap() == saved && std::time::Instant::now() < ready_deadline {
         std::thread::sleep(Duration::from_millis(20));
     }
