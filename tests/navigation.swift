@@ -230,3 +230,31 @@ func testNavigationSharedDeadline() {
     }
     check(ProcessInfo.processInfo.systemUptime - started < 1, "several commands cannot restart the deadline")
 }
+
+/// A route tab name can also appear in an unrelated tab title. The tab that runs
+/// ssh to the route host is the one a click wants, so the picker is not needed.
+func testRouteTabPrefersTheSSHTerminal() {
+    print("a route click prefers the tab that runs ssh to its host")
+    let argv = ["ssh", "-T", "-o", "BatchMode=yes", "-p", "22", "office", "/opt/homebrew/bin/tmux"]
+    checkEqual(Jumper.sshDestination(argv) ?? "-", "office", "options and their values are skipped")
+    checkEqual(Jumper.sshDestination(["/usr/bin/ssh", "-oBatchMode=yes", "me@office"]) ?? "-", "me@office",
+               "a joined option takes no value")
+    check(Jumper.sshDestination(["/opt/homebrew/bin/tmux"]) == nil, "a route without ssh has no destination")
+    let processes = """
+    ttys001  -/bin/zsh
+    ttys001  ssh office
+    ttys001  python3 /Users/you/.local/bin/ssh-route office 22
+    ttys002  -/bin/zsh
+    ttys002  claude --resume office
+    ttys003  ssh -p 22 laptop
+    ??       /usr/bin/ssh-agent -l
+    """
+    checkEqual(Jumper.ttysRunningSSH(to: "office", in: processes), ["/dev/ttys001"],
+               "only a terminal that runs ssh to the host counts")
+    let ssh = GhosttyTab(id: "a", windowId: "w", name: "ssh office", cwd: "/", tty: "/dev/ttys001")
+    let other = GhosttyTab(id: "b", windowId: "w", name: "Office Mac Outage", cwd: "/", tty: "/dev/ttys002")
+    checkEqual(Jumper.preferSSH([ssh, other], destination: "office", processes: processes).map(\.id), ["a"],
+               "the ssh tab wins over a tab that only shares the name")
+    checkEqual(Jumper.preferSSH([ssh, other], destination: "laptop", processes: processes).map(\.id), ["a", "b"],
+               "no ssh tab to the host keeps every named tab")
+}

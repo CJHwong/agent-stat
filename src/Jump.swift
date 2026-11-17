@@ -247,8 +247,49 @@ enum Jumper {
         let matching = all.filter { $0.name.localizedCaseInsensitiveContains(name) }
         // A snapshot can miss a tab opened since it was read. Read live before
         // reporting that no tab matches.
-        guard matching.isEmpty, snapshot != nil else { return matching }
-        return ghosttyTabs().filter { $0.name.localizedCaseInsensitiveContains(name) }
+        let found = matching.isEmpty && snapshot != nil
+            ? ghosttyTabs().filter { $0.name.localizedCaseInsensitiveContains(name) }
+            : matching
+        // An unrelated title can carry the same word. Only read processes for that case.
+        guard found.count > 1, let destination = sshDestination(route.argv) else { return found }
+        let processes = run("/bin/ps", ["-A", "-o", "tty=,command="]).output
+        return preferSSH(found, destination: destination, processes: processes)
+    }
+
+    /// Keep the tabs whose terminal runs ssh to the destination, when any does.
+    static func preferSSH(_ tabs: [GhosttyTab], destination: String, processes: String) -> [GhosttyTab] {
+        let terminals = ttysRunningSSH(to: destination, in: processes)
+        let running = tabs.filter { terminals.contains($0.tty) }
+        return running.isEmpty ? tabs : running
+    }
+
+    /// The host an ssh command line connects to: its first argument that is not an option.
+    static func sshDestination(_ argv: [String]) -> String? {
+        guard let start = argv.firstIndex(where: { ($0 as NSString).lastPathComponent == "ssh" }) else {
+            return nil
+        }
+        let takesValue = Set("BbcDEeFIiJLlmOoPpQRSWw")
+        var index = start + 1
+        while index < argv.count {
+            let argument = argv[index]
+            guard argument.hasPrefix("-"), argument.count > 1 else { return argument }
+            // A flag group such as -tt takes no value. A value flag alone takes the next argument.
+            if argument.count == 2, let flag = argument.last, takesValue.contains(flag) { index += 1 }
+            index += 1
+        }
+        return nil
+    }
+
+    /// Terminals with an ssh process to the destination, from `ps -A -o tty=,command=`.
+    static func ttysRunningSSH(to destination: String, in processes: String) -> Set<String> {
+        var terminals: Set<String> = []
+        for line in processes.split(separator: "\n") {
+            let words = line.split(separator: " ").map(String.init)
+            guard words.count > 1, words[0].hasPrefix("tty"),
+                  sshDestination(Array(words.dropFirst())) == destination else { continue }
+            terminals.insert("/dev/" + words[0])
+        }
+        return terminals
     }
 
     /// Split a route's argv into the program to start and its arguments.
