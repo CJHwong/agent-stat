@@ -1836,10 +1836,12 @@ fn shared_sidebars_keep_mouse_keyboard_new_windows_and_service_recovery() {
         &first,
         "#{@window_sidebar_pane}",
     ]);
+    // The second window's sidebar shows as a content pane until it is registered,
+    // so a first draw can list that window with two panes. Its rows then move,
+    // and a click on the row read from that draw lands on another one.
     client.wait("shared renderer draws both windows", || {
-        sandbox
-            .tmux(&["capture-pane", "-p", "-t", &sidebar])
-            .contains("Second content")
+        let capture = sandbox.tmux(&["capture-pane", "-p", "-t", &sidebar]);
+        capture.contains("Second content") && !capture.contains("2 panes:")
     });
     let capture = sandbox.tmux(&["capture-pane", "-p", "-t", &sidebar]);
     let row = capture
