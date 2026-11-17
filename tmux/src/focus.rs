@@ -51,7 +51,10 @@ pub fn refresh_styles(options: &Options) -> io::Result<()> {
 pub fn run(options: &Options, toggle: bool) -> io::Result<()> {
     let target = options.pane.as_deref().unwrap_or(&options.session);
     let _lock = rt::lock(&rt::state_root()?.join("layout.lock"), false)?;
-    let header = model::tmux(
+    // One call reads the layout and the panes. Two calls let a split land between
+    // them, which saved a layout with fewer panes than its signature. A later
+    // restore then matched the signature and tmux refused the layout.
+    let reading = model::tmux(
         &options.socket,
         &[
             "display-message",
@@ -59,8 +62,15 @@ pub fn run(options: &Options, toggle: bool) -> io::Result<()> {
             "-t",
             target,
             "#{window_id}\t#{window_zoomed_flag}\t#{@window_sidebar_enabled}\t#{@window_sidebar_focus_zoom}\t#{@window_sidebar_focus_layout}\t#{@window_sidebar_focus_panes}\t#{window_layout}",
+            ";",
+            "list-panes",
+            "-t",
+            target,
+            "-F",
+            "#{pane_id}\t#{@window_sidebar}\t#{pane_active}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}",
         ],
     )?;
+    let (header, rows) = reading.split_once('\n').unwrap_or((&reading, ""));
     let fields = header.split('\t').collect::<Vec<_>>();
     if fields.len() != 7 {
         return Err(io::Error::other("Missing focus window settings"));
@@ -74,17 +84,7 @@ pub fn run(options: &Options, toggle: bool) -> io::Result<()> {
     } else {
         fields[3] != "0"
     };
-    let rows = model::tmux(
-        &options.socket,
-        &[
-            "list-panes",
-            "-t",
-            window,
-            "-F",
-            "#{pane_id}\t#{@window_sidebar}\t#{pane_active}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}",
-        ],
-    )?;
-    let panes = panes(&rows)?;
+    let panes = panes(rows)?;
     let mut identifiers = panes
         .iter()
         .filter(|pane| pane.role.is_empty() || pane.role == "1")
