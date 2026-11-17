@@ -106,10 +106,21 @@ impl Drop for Sandbox {
                 .flatten()
                 .filter(|file| file.file_name().to_string_lossy().ends_with(".monitor.pid"))
             {
-                if let Ok(pid) = fs::read_to_string(file.path())
+                let Ok(pid) = fs::read_to_string(file.path())
                     .unwrap_or_default()
                     .parse::<i32>()
-                {
+                else {
+                    continue;
+                };
+                // One suite spends about 100000 process ids in 40 seconds, so the
+                // ids wrap. A monitor that already left can have handed its id to
+                // a tmux server of a test running beside this one.
+                let command = Command::new("ps")
+                    .args(["-o", "command=", "-p", &pid.to_string()])
+                    .output()
+                    .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+                    .unwrap_or_default();
+                if command.contains(&*self.socket.to_string_lossy()) {
                     unsafe { libc::kill(pid, libc::SIGTERM) };
                 }
             }
