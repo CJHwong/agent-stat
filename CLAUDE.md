@@ -27,6 +27,7 @@ changing the code. Keep that split.
 | `python3 scripts/migrate-storage.py` | Checks existing storage and profiles without changes. Requires Python 3.11 or later. |
 | `python3 install.py` | Dry run of the hook install. |
 | `python3 install.py --apply` | Deploy the hooks and stream helper locally, merge the config entries, write the Codex trust hashes. Run on each host. |
+| `python3 install.py --remote <host> [--apply]` | The same install over ssh, on a host with no checkout. The remote login shell is zsh. |
 | `python3 tests/live-probe.py` | A real `claude` and a real `codex` against throwaway config trees. Points `HOME` at a temp tree. |
 | `python3 tests/close-probe.py [claude\|codex]` | What a closed session reports, under a real pty. |
 | `python3 scripts/demo-events.py /tmp/demo` | A synthetic events tree covering every state, plus a second machine. |
@@ -108,7 +109,8 @@ nothing here.
 
 The deployed copy is what runs. Editing `hooks/` changes nothing until
 `python3 install.py --apply`. The app changes after a relaunch.
-Run the installer on each machine. It deploys scripts under
+Run the installer on each machine, or `--remote <host>` for a machine with no checkout.
+It deploys scripts under
 `~/.local/state/agent-stat/bin`, including `stream-events.py`.
 The terminal installer is separate. It deploys under `~/.agents/tmux/`.
 Keep `--shared` in terminal installation and upgrade commands to retain one renderer per server.

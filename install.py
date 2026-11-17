@@ -3,7 +3,7 @@
 
 Dry run by default. Pass --apply to write. --claude-config DIR and --codex-home DIR
 point the install at another config tree, which is how the probes stay off a real
-one.
+one. --remote HOST runs the same install over ssh on a machine with no checkout.
 
 It merges the hook entries into the two config files, deploys the
 scripts into local storage, and writes the Codex trust entries that
@@ -406,8 +406,56 @@ def config_dir(flag: str, default: str) -> Path:
     return Path.home() / default
 
 
+# What the installer reads from this checkout. A machine with no checkout gets
+# exactly these, in the same layout.
+REMOTE_FILES = (
+    "install.py",
+    "hooks/agent-stat-hook.sh",
+    "hooks/agent-stat-run-end.sh",
+    "scripts/stream-events.py",
+)
+
+
+def install_remote(host: str, apply: bool) -> int:
+    """Run this installer on another machine, against that machine's own config.
+
+    The other machine has no checkout, so a hand copy was the only way a change
+    reached it, and a missed copy left old code running there. The files travel
+    as one tar stream into a temporary folder there, which is removed afterwards.
+    """
+    if not host or host.startswith("-"):
+        raise SystemExit(f"--remote wants a host name, not {host!r}")
+    command = (
+        'folder=$(mktemp -d) && tar -xf - -C "$folder" && python3 "$folder/install.py"'
+        + (" --apply" if apply else "")
+        + '; code=$?; find "$folder" -delete; exit $code'
+    )
+    # COPYFILE_DISABLE keeps the macOS tar from adding ._ files to the stream.
+    packed = subprocess.Popen(
+        ["tar", "-cf", "-", *REMOTE_FILES],
+        cwd=repo_dir(),
+        stdout=subprocess.PIPE,
+        env=dict(os.environ, COPYFILE_DISABLE="1"),
+    )
+    result = subprocess.run(["ssh", "-T", host, command], stdin=packed.stdout)
+    packed.stdout.close()
+    if packed.wait() != 0:
+        raise SystemExit("could not pack the install files")
+    return result.returncode
+
+
 def main() -> int:
     apply = "--apply" in sys.argv[1:]
+    if "--remote" in sys.argv[1:]:
+        rest = sys.argv[1:]
+        at = rest.index("--remote")
+        host = rest[at + 1] if at + 1 < len(rest) else ""
+        extra = [
+            a for i, a in enumerate(rest) if i not in (at, at + 1) and a != "--apply"
+        ]
+        if extra:
+            raise SystemExit(f"--remote takes only --apply, not: {' '.join(extra)}")
+        return install_remote(host, apply)
     taken = {"--apply", "--claude-config", "--codex-home"}
     unknown = [a for a in sys.argv[1:] if a not in taken]
     for flag in ("--claude-config", "--codex-home"):

@@ -66,7 +66,7 @@ writes the trust entries Codex needs. To remove it later, delete the entries who
 command contains `agent-stat`.
 
 Events and deployed scripts live in `~/.local/state/agent-stat`, outside synced folders.
-Run the installer on each machine. Add an `events` command to a remote route to receive
+Run the installer on each machine, or from here with `--remote <host>`. Add an `events` command to a remote route to receive
 events over Secure Shell (SSH). Event delivery and script deployment require no Syncthing.
 See [the second machine guide](docs/guides.md#report-from-a-second-machine).
 
