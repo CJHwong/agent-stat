@@ -63,7 +63,7 @@ It also checks new windows, two attached sessions, service restart, upgrade, rol
 The control tests include a monitor that inherits `TMUX` and `TMUX_PANE` from a hook.
 The shortcut observer clears those variables before it attaches to the requested session.
 A real terminal check passed mouse selection and keyboard navigation on the office server, which runs tmux 3.7c.
-After the resize fix, real terminal checks passed eight consecutive times on both office and Avery.
+After the resize fix, real terminal checks passed eight consecutive times on both machines.
 Each check covered a new session, shortcut help, a new window, narrow expansion, and Escape.
 
 The shared renderer polls at 150 milliseconds. Inactive production renderers poll at five seconds.

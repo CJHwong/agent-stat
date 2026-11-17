@@ -196,7 +196,7 @@ func testRunEnd() {
     store.acknowledge(key, now: later)
     checkEqual(store.visible(now: later).count, 0, "a click clears it")
 
-    // Rhapsody resumes one codex session for its next run. That run is live until
+    // An orchestrator resumes one codex session for its next run. That run is live until
     // the bridge ends it too, even after its own Stop.
     let next = later + 10
     store.apply(decode(#"{"ts":\#(next),"event":"SessionStart","agent":"codex","agent_pid":55063,"session":"\#(id)","cwd":"/w/runner","tmux":"%1760"}"#),

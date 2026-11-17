@@ -166,8 +166,11 @@ def completed(old: Path, new: Path) -> bool:
 
 
 class Plan:
-    def __init__(self, home: Path):
+    def __init__(self, home: Path, bridge_callers: tuple[Path, ...] = ()):
         self.home = home.resolve(strict=True)
+        # Files outside the agent profiles that run the end bridge, such as an
+        # orchestrator config. Each one gets the new bridge path too.
+        self.bridge_callers = bridge_callers
         self.old = self.home / ".agents/agent-stat"
         self.new = self.home / ".local/state/agent-stat"
         self.host = os.uname().nodename.removesuffix(".local")
@@ -227,11 +230,15 @@ class Plan:
                 self.edits[path] = content
         self.config_count = len(set(paths + codex_paths))
         self.trust_count = len(trust)
-        rhapsody = self.home / ".rhapsody/conf.yaml"
-        if rhapsody.is_file():
-            resolved = rhapsody.resolve(strict=True)
+        for caller in self.bridge_callers:
+            caller = caller.expanduser()
+            if not caller.is_absolute():
+                caller = self.home / caller
+            if not caller.is_file():
+                raise MigrationError(f"bridge caller is not a file: {caller}")
+            resolved = caller.resolve(strict=True)
             if not resolved.is_relative_to(self.home):
-                raise MigrationError("Rhapsody config points outside the selected home")
+                raise MigrationError("a bridge caller points outside the selected home")
             original_bytes = resolved.read_bytes()
             self.originals[resolved] = original_bytes
             original = original_bytes.decode()
@@ -338,9 +345,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", type=Path, default=Path.home())
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--bridge-caller",
+        type=Path,
+        action="append",
+        default=[],
+        help="another file that runs the end bridge, such as an orchestrator config",
+    )
     arguments = parser.parse_args()
     try:
-        plan = Plan(arguments.home)
+        plan = Plan(arguments.home, tuple(arguments.bridge_caller))
         plan.report()
         if arguments.apply:
             plan.apply()

@@ -86,8 +86,8 @@ class MigrationTests(unittest.TestCase):
         path.write_text(json.dumps(document))
         return path
 
-    def execute(self, apply=False, success=True):
-        command = [sys.executable, str(SCRIPT), "--home", str(self.home)]
+    def execute(self, apply=False, success=True, extra=()):
+        command = [sys.executable, str(SCRIPT), "--home", str(self.home), *extra]
         if apply:
             command.append("--apply")
         result = subprocess.run(command, capture_output=True, text=True, timeout=20)
@@ -222,18 +222,18 @@ with old.open('ab', buffering=0) as stream:
         self.assertEqual(tomllib.loads(second_config.read_text())["model"], "other")
 
     @unittest.skipUnless(sys.platform == "darwin", "requires macOS atomic swap")
-    def test_rhapsody_bridge_and_cached_launchers_use_new_storage(self):
-        rhapsody = self.home / ".rhapsody/conf.yaml"
-        rhapsody.parent.mkdir()
+    def test_bridge_caller_and_cached_launchers_use_new_storage(self):
+        caller = self.home / ".orchestrator/conf.yaml"
+        caller.parent.mkdir()
         original = (
             'keep: value\nbridge: "~/.agents/agent-stat/bin/agent-stat-run-end.sh"\n'
         )
-        rhapsody.write_text(original)
-        self.execute(apply=True)
+        caller.write_text(original)
+        self.execute(apply=True, extra=("--bridge-caller", ".orchestrator/conf.yaml"))
         self.assertEqual(
-            (self.new / "archive/config/.rhapsody/conf.yaml").read_text(), original
+            (self.new / "archive/config/.orchestrator/conf.yaml").read_text(), original
         )
-        self.assertIn(str(self.new / "bin/agent-stat-run-end.sh"), rhapsody.read_text())
+        self.assertIn(str(self.new / "bin/agent-stat-run-end.sh"), caller.read_text())
         environment = dict(
             os.environ, HOME=str(self.home), AGENT_STAT_DIR=str(self.old)
         )

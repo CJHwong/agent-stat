@@ -252,7 +252,7 @@ func testRouteTabPrefersTheSSHTerminal() {
     checkEqual(Jumper.ttysRunningSSH(to: "office", in: processes), ["/dev/ttys001"],
                "only a terminal that runs ssh to the host counts")
     let ssh = GhosttyTab(id: "a", windowId: "w", name: "ssh office", cwd: "/", tty: "/dev/ttys001")
-    let other = GhosttyTab(id: "b", windowId: "w", name: "Office Mac Outage", cwd: "/", tty: "/dev/ttys002")
+    let other = GhosttyTab(id: "b", windowId: "w", name: "Office notes", cwd: "/", tty: "/dev/ttys002")
     checkEqual(Jumper.preferSSH([ssh, other], destination: "office", processes: processes).map(\.id), ["a"],
                "the ssh tab wins over a tab that only shares the name")
     checkEqual(Jumper.preferSSH([ssh, other], destination: "laptop", processes: processes).map(\.id), ["a", "b"],

@@ -268,7 +268,8 @@ The macOS migration script requires Python 3.11 or later.
 Run `python3 scripts/migrate-storage.py` on each machine to check the plan without changes.
 Pause sync for AgentStat and the affected settings on both machines before `--apply`.
 The script retains history and configuration backups under `archive/` in the new directory.
-It updates registered profiles, Codex trust entries, and the Rhapsody end bridge caller.
+It updates registered profiles and Codex trust entries. Name any other file that runs the end
+bridge, such as an orchestrator config, with `--bridge-caller <file>`.
 It swaps the directories atomically so open writers keep their file handles.
 After in-flight hooks finish, remove the old `hosts` symbolic link and restore sync.
 Keep the old script launchers until active sessions stop using their cached commands.
