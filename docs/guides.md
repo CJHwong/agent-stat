@@ -128,7 +128,11 @@ It ignores status symbols before the title, such as the Codex spinner.
 The match ignores case and must identify one pane.
 The app narrows title matches by attached clients and compatible folders.
 If several candidates remain, the app stops the jump.
-The pane must have an attached client and a matching folder.
+The pane must have a matching folder.
+If no terminal shows the pane's session, the panel selects the pane and asks where to show it.
+Show in the current tab switches the most recently used tmux client on that server to the session.
+Open a new tab opens a Ghostty tab that attaches to it, through the route's ssh for another machine.
+If several tabs match a route's tab name, the panel prefers the tab that runs ssh to the route's host.
 Remote folder aliases resolve on the remote host.
 
 New hook events include the tmux socket path.

@@ -236,8 +236,12 @@ func testRemotePaneTitleRefusals() {
         checkEqual(selected, "", "a partial title selects nothing")
     }
     withRemoteJump(listing: remoteLine("%12", attached: "0", title: "Memory report | operator")) { outcome, selected in
-        check(outcome.message?.contains("no tmux client") == true, "a detached match reports no client")
-        checkEqual(selected, "", "a detached match selects nothing")
+        if case .attach(let target) = outcome {
+            checkEqual(target.pane, "%12", "a detached match asks where to show its pane")
+        } else {
+            check(false, "a detached match asks where to show its pane")
+        }
+        check(selected.contains("select-pane -t %12"), "a detached match selects its pane before asking")
     }
     withRemoteJump(listing: remoteLine("%12", folder: "/other", title: "Memory report | operator")) { outcome, selected in
         check(outcome.message?.contains("different folder") == true, "a match in another folder stays refused")

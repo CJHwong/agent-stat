@@ -62,12 +62,14 @@ enum JumpOutcome {
     case failed(message: String)
     /// Several tabs could be the one, so nothing moved and the panel must ask.
     case pick(folder: String, tabs: [GhosttyTab])
+    /// No terminal shows that session, so the panel asks where to show it.
+    case attach(AttachTarget)
 
     var message: String? {
         switch self {
         case .done(let message): return message
         case .failed(let message): return message
-        case .pick: return nil
+        case .pick, .attach: return nil
         }
     }
 

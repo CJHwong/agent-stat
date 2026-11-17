@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildPanel()
 
         model.onJump = { [weak self] session in self?.jump(to: session) }
-        model.onPick = { [weak self] tab in self?.jumpTo(tab: tab) }
+        wirePicker()
         model.onDismiss = { [weak self] session in self?.dismiss(session) }
 
         let memory = PanelMemory.load()

@@ -118,6 +118,7 @@ swiftc -o "$BIN" \
     "$HERE/src/Jump.swift" \
     "$HERE/src/CommandRunner.swift" \
     "$HERE/src/JumpRemote.swift" \
+    "$HERE/src/JumpAttach.swift" \
     "$HERE/src/JumpLocal.swift" \
     "$HERE/src/JumpQueue.swift" \
     "$HERE/src/TmuxTargeting.swift" \

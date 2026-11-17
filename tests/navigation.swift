@@ -258,3 +258,24 @@ func testRouteTabPrefersTheSSHTerminal() {
     checkEqual(Jumper.preferSSH([ssh, other], destination: "laptop", processes: processes).map(\.id), ["a", "b"],
                "no ssh tab to the host keeps every named tab")
 }
+
+func testAttachCommandSurvivesBothShells() {
+    print("navigation: a new tab command survives this shell and the remote one")
+    withTempDir { directory in
+        let ssh = directory.appendingPathComponent("ssh")
+        try "#!/bin/sh\nexec /bin/sh -c \"printf '%s\\n' $*\"\n".write(to: ssh, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: ssh.path)
+        var route = try Routes.decode(Data(#"{"peer": {"tmux": ["\#(ssh.path)", "-T", "-o", "BatchMode=yes", "office", "tmux"]}}"#.utf8))
+            .route(for: "peer")!
+        route.recordedSocket = "/tmp/it's here/default"
+        let remote = AttachTarget(session: "$3", name: "work", pane: "%1", argv: route.argv,
+                                  prefix: route.command([]), route: route, host: "peer")
+        let shown = CommandRunner.run("/bin/sh", ["-c", Jumper.attachCommand(remote)])
+        checkEqual(shown.output, "-t\n-o\nBatchMode=yes\noffice\ntmux\n-u\n-S\n/tmp/it's here/default\nattach-session\n-t\n$3\n",
+                   "the remote shell receives the session identifier and a terminal request")
+        let local = AttachTarget(session: "$3", name: "work", pane: "%1", argv: ["/usr/bin/printf", "%s\\n", "-u"],
+                                 prefix: [], route: nil, host: nil)
+        let printed = CommandRunner.run("/bin/sh", ["-c", Jumper.attachCommand(local)])
+        checkEqual(printed.output, "-u\nattach-session\n-t\n$3\n", "a local session attaches without ssh")
+    }
+}

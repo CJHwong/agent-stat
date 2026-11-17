@@ -14,6 +14,22 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 HARNESS = r"""
 import Foundation
 
+if CommandLine.arguments.count == 6, CommandLine.arguments[1] == "attach" {
+    var hidden = Session(key: SessionKey(host: "peer", id: "hidden"))
+    hidden.launchCwd = CommandLine.arguments[3]
+    hidden.tmuxPane = CommandLine.arguments[4]
+    let routes = Routes.load(from: URL(fileURLWithPath: CommandLine.arguments[2]))
+    guard case .attach(let target) = Jumper.perform(Jumper.plan(for: hidden, routes: routes)) else {
+        print("no attach choice")
+        exit(0)
+    }
+    if CommandLine.arguments[5] == "command" {
+        print(Jumper.attachCommand(target))
+    } else {
+        print(Jumper.showInCurrentTab(target).message ?? "ok")
+    }
+    exit(0)
+}
 if CommandLine.arguments.count == 6, CommandLine.arguments[1] == "batch" {
     let argv = [CommandLine.arguments[2], "-S", CommandLine.arguments[3]]
     let command = TmuxTargeting.selection(window: CommandLine.arguments[4], pane: CommandLine.arguments[5])
@@ -83,6 +99,67 @@ def attached_client(tmux, session):
         process.terminate()
         process.wait(timeout=5)
         os.close(master)
+
+
+def detached_session_probe(root, tmux, binary, routes):
+    def command(*arguments):
+        return subprocess.check_output([*tmux, *arguments], text=True).strip()
+
+    command("new-session", "-d", "-s", "hidden", "-c", str(root))
+    target = command(
+        "split-window", "-d", "-P", "-F#{pane_id}", "-t", "hidden", "-c", str(root)
+    )
+    shell = command(
+        "new-window", "-d", "-P", "-F#{window_id}", "-t", "hidden", "-c", str(root)
+    )
+    command("select-window", "-t", shell)
+
+    def attach(mode):
+        return subprocess.check_output(
+            [str(binary), "attach", str(routes), str(root), target, mode], text=True
+        ).strip()
+
+    line = attach("command")
+    assert line.startswith("'"), line
+    assert command("display-message", "-p", "-t", "hidden", "#{pane_id}") == target
+    print("PASS a session without a client asks where to show the selected pane")
+    master, slave = os.openpty()
+    environment = dict(os.environ, TERM="xterm-256color")
+    environment.pop("TMUX", None)
+    viewer = subprocess.Popen(
+        ["/bin/sh", "-c", line],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        env=environment,
+    )
+    os.close(slave)
+    try:
+        deadline = time.monotonic() + 5
+        while (
+            command("display-message", "-p", "-t", "hidden", "#{session_attached}")
+            == "0"
+        ):
+            if time.monotonic() >= deadline:
+                raise RuntimeError("the new tab command did not attach")
+            time.sleep(0.05)
+        print("PASS the new tab command attaches to that session")
+    finally:
+        viewer.terminate()
+        viewer.wait(timeout=5)
+        os.close(master)
+    deadline = time.monotonic() + 5
+    while (
+        command("display-message", "-p", "-t", "hidden", "#{session_attached}") != "0"
+    ):
+        if time.monotonic() >= deadline:
+            raise RuntimeError("the new tab client did not leave")
+        time.sleep(0.05)
+    outcome = attach("current")
+    assert "showing" in outcome, outcome
+    assert "hidden" in command("list-clients", "-F#{client_session}").split("\n")
+    command("switch-client", "-t", "probe")
+    print("PASS the current tab moves its tmux client to that session")
 
 
 def linked_window_probe(root, tmux, binary, routes):
@@ -205,6 +282,7 @@ def exercise(root, tmux):
         "Jump",
         "CommandRunner",
         "JumpRemote",
+        "JumpAttach",
         "JumpLocal",
         "Liveness",
         "TmuxTargeting",
@@ -312,6 +390,7 @@ def exercise(root, tmux):
         batch_selection_probe(tmux, binary, target, other)
         linked_window_probe(root, tmux, binary, routes)
         server_identity_probe(root, tmux, binary, routes)
+        detached_session_probe(root, tmux, binary, routes)
     finally:
         client.terminate()
         client.wait(timeout=5)

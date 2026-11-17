@@ -71,7 +71,9 @@ extension AppDelegate {
 
     /// Put a finished jump on screen: a status line, or the tabs to choose from.
     private func show(_ outcome: JumpOutcome) {
-        if case .pick(let folder, let tabs) = outcome {
+        if case .attach(let target) = outcome {
+            model.picker = TabPicker(label: "No terminal shows \(target.name)", tabs: [], attach: target)
+        } else if case .pick(let folder, let tabs) = outcome {
             let name = (folder as NSString).lastPathComponent
             model.picker = TabPicker(
                 label: "\(tabs.count) tabs in \(name.isEmpty ? folder : name)",
@@ -81,6 +83,27 @@ extension AppDelegate {
             model.status = outcome.message
         }
         tick()
+    }
+
+    /// The two kinds of picker row: a tab to choose, or where to show a session.
+    func wirePicker() {
+        model.onPick = { [weak self] tab in self?.jumpTo(tab: tab) }
+        model.onAttach = { [weak self] target, newTab in self?.attach(target, newTab: newTab) }
+    }
+
+    func attach(_ target: AttachTarget, newTab: Bool) {
+        let started = ProcessInfo.processInfo.systemUptime
+        model.picker = nil
+        navigation.queue.submit({
+            JumpExecution(summary: newTab ? "new tab" : "current tab",
+                          outcome: newTab ? Jumper.showInNewTab(target) : Jumper.showInCurrentTab(target))
+        }, completion: { [weak self] result in
+            guard let self else { return }
+            let elapsed = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
+            Log.write("jump attach session=\(target.session) host=\(target.host ?? "-") \(result.summary) "
+                      + "result=\(result.outcome.summary) elapsed=\(elapsed)ms")
+            self.show(result.outcome)
+        })
     }
 
     func jumpTo(tab: GhosttyTab) {
@@ -135,6 +158,8 @@ extension JumpOutcome {
             return message
         case .pick(let folder, let tabs):
             return "pick \(tabs.count) tabs in \(folder)"
+        case .attach(let target):
+            return "ask where to show \(target.name)"
         }
     }
 }

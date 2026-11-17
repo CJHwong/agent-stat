@@ -147,24 +147,12 @@ struct PanelView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 9)
                 .padding(.bottom, 5)
+            if let target = picker.attach {
+                pickerRow("Show in the current tab", icon: "macwindow") { model.onAttach?(target, false) }
+                pickerRow("Open a new tab", icon: "plus.square.on.square") { model.onAttach?(target, true) }
+            }
             ForEach(picker.tabs, id: \.selectionID) { tab in
-                Button {
-                    model.onPick?(tab)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "macwindow")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                        Text(tab.pickerName(in: picker.tabs))
-                            .font(.system(size: 11.5))
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                pickerRow(tab.pickerName(in: picker.tabs), icon: "macwindow") { model.onPick?(tab) }
             }
             Button {
                 model.picker = nil
@@ -178,6 +166,24 @@ struct PanelView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func pickerRow(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                Text(title)
+                    .font(.system(size: 11.5))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var header: some View {

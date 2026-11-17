@@ -138,6 +138,7 @@ precondition(outcome.message == nil, outcome.message ?? "")
         names = [
             "Jump",
             "JumpRemote",
+            "JumpAttach",
             "JumpLocal",
             "Liveness",
             "CommandRunner",

@@ -80,6 +80,7 @@ def compile_probe(root, version):
     names = [
         "Jump",
         "JumpRemote",
+        "JumpAttach",
         "Liveness",
         "TmuxTargeting",
         "Session",

@@ -67,7 +67,6 @@ extension Jumper {
         guard let info = TmuxTargeting.paneInfo(target, in: listed.output) else {
             return .failed(message: "pane \(target) is gone")
         }
-        guard info.attached else { return .failed(message: "pane \(target) has no tmux client") }
         if let refusal = localOwnership(target, context: context, info: info) {
             return .failed(message: refusal)
         }
@@ -77,6 +76,10 @@ extension Jumper {
             let failed = selected.output.contains(TmuxTargeting.windowSelected) ? target : window
             return .failed(message: "could not select \(failed)")
         }
+        if !info.attached, let session = info.session {
+            return .attach(attachTarget(session: session, pane: target, argv: argv, prefix: []))
+        }
+        guard info.attached else { return .failed(message: "pane \(target) has no tmux client") }
         return focusTmuxClient(pane: target, session: info.session, argv: argv, tabs: context.tabs)
     }
 
@@ -102,8 +105,8 @@ extension Jumper {
             ? nil : "pane \(pane) is at a different folder"
     }
 
-    private static func focusTmuxClient(pane: String, session: String?, argv: [String],
-                                        tabs snapshot: [GhosttyTab]?) -> JumpOutcome {
+    static func focusTmuxClient(pane: String, session: String?, argv: [String],
+                                tabs snapshot: [GhosttyTab]?) -> JumpOutcome {
         let clients = runTmux(argv, TmuxTargeting.clients(pane: pane, session: session))
         guard clients.status == 0 else {
             return .failed(message: "selected pane \(pane), could not read tmux clients")

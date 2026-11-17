@@ -72,10 +72,12 @@ struct RowGroup: Identifiable {
     }
 }
 
-/// Shown when more than one tab in the same folder could be the session.
+/// Shown when more than one tab in the same folder could be the session, or when no
+/// terminal shows the session and the panel asks where to show it.
 struct TabPicker {
     let label: String
     let tabs: [GhosttyTab]
+    var attach: AttachTarget?
 }
 
 @MainActor
@@ -110,7 +112,7 @@ final class PanelModel: ObservableObject {
     /// Roughly what the list would measure at its drawn heights. It only decides
     /// whether the list scrolls, so it does not need to be exact.
     var estimatedContentHeight: CGFloat {
-        if let picker { return 80 + CGFloat(picker.tabs.count) * 30 }
+        if let picker { return 80 + CGFloat(picker.attach == nil ? picker.tabs.count : 2) * 30 }
         if emptyHint != nil { return 60 }
         let rows = groups.reduce(0) { $0 + $1.rows.count }
         let placeholders = groups.filter { $0.emptyMessage != nil }.count
@@ -120,6 +122,8 @@ final class PanelModel: ObservableObject {
     /// Set by the app delegate. Clicking a row asks it to take you to the session.
     var onJump: ((Session) -> Void)?
     var onPick: ((GhosttyTab) -> Void)?
+    /// Show a session no terminal shows: true opens a new tab, false reuses a client.
+    var onAttach: ((AttachTarget, Bool) -> Void)?
     /// Set by the app delegate. The x on a row asks it to hide that row.
     var onDismiss: ((Session) -> Void)?
 

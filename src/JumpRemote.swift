@@ -11,13 +11,19 @@ extension Jumper {
         if let socket = route.recordedSocket, !socket.hasPrefix("/") {
             return .failed(message: "the tmux socket path is invalid")
         }
-        let message: String?
+        let step: RemoteStep
         if let pane, !pane.isEmpty {
-            message = performRemote(host: host, route: route, pane: pane, folder: folder)
+            step = performRemote(host: host, route: route, pane: pane, folder: folder)
         } else if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            message = performNamedRemote(host: host, route: route, title: title, folder: folder)
+            step = performNamedRemote(host: host, route: route, title: title, folder: folder)
         } else {
-            message = "that session reports no tmux pane on \(host)"
+            step = .failed("that session reports no tmux pane on \(host)")
+        }
+        let message: String?
+        switch step {
+        case .selected: message = nil
+        case .failed(let text): message = text
+        case .detached(let target): return .attach(target)
         }
         let tabs = tabs(for: route, in: snapshot)
         switch tabs.count {
@@ -38,10 +44,16 @@ extension Jumper {
         }
     }
 
+    private enum RemoteStep {
+        case selected
+        case failed(String)
+        case detached(AttachTarget)
+    }
+
     private static func performNamedRemote(host: String, route: Route, title: String,
-                                           folder: String) -> String? {
+                                           folder: String) -> RemoteStep {
         let panes = runTmux(route.argv, route.command(TmuxTargeting.listing))
-        guard panes.status == 0 else { return "cannot reach tmux on \(host)" }
+        guard panes.status == 0 else { return .failed("cannot reach tmux on \(host)") }
         let candidates = TmuxTargeting.matchingPanes(title: title, in: panes.output)
         var resolvedFolder: String?
         let compatible = candidates.filter { pane in
@@ -49,43 +61,44 @@ extension Jumper {
             return info.attached && remoteFolderMatches(folder, info.path, route: route, resolved: &resolvedFolder)
         }
         let matches = compatible.isEmpty ? candidates : compatible
-        guard matches.count <= 1 else { return "multiple panes match \(title) on \(host)" }
-        guard let pane = matches.first else { return "no pane matches \(title) on \(host)" }
+        guard matches.count <= 1 else { return .failed("multiple panes match \(title) on \(host)") }
+        guard let pane = matches.first else { return .failed("no pane matches \(title) on \(host)") }
         return performRemote(host: host, route: route, pane: pane, folder: folder,
                              listing: panes.output, resolvedFolder: resolvedFolder)
     }
 
     /// Select a pane on another machine, by running tmux there through the route.
     ///
-    /// Returns a message when the click should say something, or nil when the
-    /// pane was selected. A route that cannot be reached says so rather than
-    /// pretending: a click that silently did nothing is worse than one that
-    /// reports a failure.
+    /// A route that cannot be reached says so rather than pretending: a click that
+    /// silently did nothing is worse than one that reports a failure. A session that
+    /// no client shows has its pane selected, then the panel asks where to show it.
     private static func performRemote(host: String, route: Route, pane: String,
                                       folder: String, listing snapshot: String? = nil,
-                                      resolvedFolder: String? = nil) -> String? {
+                                      resolvedFolder: String? = nil) -> RemoteStep {
         let listing = snapshot.map { Result(status: 0, output: $0) }
             ?? runTmux(route.argv, route.command(TmuxTargeting.listing))
         guard listing.status == 0 else {
-            return "cannot reach tmux on \(host)"
+            return .failed("cannot reach tmux on \(host)")
         }
         guard let info = TmuxTargeting.paneInfo(pane, in: listing.output) else {
-            return "pane \(pane) is gone on \(host)"
-        }
-        guard info.attached else {
-            return "pane \(pane) has no tmux client on \(host)"
+            return .failed("pane \(pane) is gone on \(host)")
         }
         var resolved = resolvedFolder
         guard remoteFolderMatches(folder, info.path, route: route, resolved: &resolved) else {
-            return "pane \(pane) is at a different folder on \(host)"
+            return .failed("pane \(pane) is at a different folder on \(host)")
         }
         let command = TmuxTargeting.selection(window: info.window, pane: pane, session: info.session)
         let selected = runTmux(route.argv, route.command(command))
         guard selected.status == 0 else {
             let failed = selected.output.contains(TmuxTargeting.windowSelected) ? "pane \(pane)" : info.window
-            return "could not select \(failed) on \(host)"
+            return .failed("could not select \(failed) on \(host)")
         }
-        return nil
+        guard info.attached else {
+            guard let session = info.session else { return .failed("pane \(pane) has no tmux client on \(host)") }
+            return .detached(attachTarget(session: session, pane: pane, argv: route.argv,
+                                          prefix: route.command([]), route: route, host: host))
+        }
+        return .selected
     }
 
     private static func remoteFolderMatches(_ folder: String, _ panePath: String, route: Route,
