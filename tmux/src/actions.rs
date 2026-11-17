@@ -249,10 +249,7 @@ fn menu(options: &Options, entry: &Entry, split_only: bool) -> io::Result<()> {
             &mut args,
             "New window",
             "c",
-            format!(
-                "run-shell -b {}",
-                rt::quote(&rt::command(options, "new", Some(pane))?)
-            ),
+            rt::background(&rt::command(options, "new", Some(pane))?),
         );
     }
     item(
@@ -289,10 +286,7 @@ fn append_menu(options: &Options, entry: &Entry, args: &mut Vec<String>) -> io::
             args,
             label,
             key,
-            format!(
-                "run-shell -b {}",
-                rt::quote(&rt::command(options, action, Some(pane))?)
-            ),
+            rt::background(&rt::command(options, action, Some(pane))?),
         );
     }
     args.push(String::new());
@@ -336,10 +330,7 @@ fn append_menu(options: &Options, entry: &Entry, args: &mut Vec<String>) -> io::
             args,
             label,
             key,
-            format!(
-                "run-shell -b {}",
-                rt::quote(&rt::command(options, action, Some(pane))?)
-            ),
+            rt::background(&rt::command(options, action, Some(pane))?),
         );
     }
     args.push(String::new());

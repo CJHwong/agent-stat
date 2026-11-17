@@ -541,3 +541,23 @@ fn registry_callers(
     }
     Ok(callers)
 }
+
+#[cfg(test)]
+mod tests {
+    /// tmux 3.8 crashes when a background job prints or fails after the client
+    /// that started it exits and its session is destroyed. Every hook and key
+    /// binding job must stay silent and succeed.
+    #[test]
+    fn every_background_job_in_the_config_is_silent() {
+        let template = include_str!("../sidebar.conf.in");
+        let bodies: Vec<&str> = template
+            .split("run-shell -b \"")
+            .skip(1)
+            .map(|rest| &rest[..rest.find('"').unwrap()])
+            .collect();
+        assert_eq!(bodies.len(), 21);
+        for body in bodies {
+            assert!(body.ends_with(" >/dev/null 2>&1 || true"), "{body}");
+        }
+    }
+}

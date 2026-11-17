@@ -30,6 +30,15 @@ pub fn stamp() -> u128 {
 pub fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
+/// A tmux command that runs `command` as a background job. tmux 3.8 crashes when
+/// such a job prints or fails after its client exits and its session is gone,
+/// so the job prints nothing and always succeeds. Errors still reach the log.
+pub fn background(command: &str) -> String {
+    format!(
+        "run-shell -b {}",
+        quote(&format!("{command} >/dev/null 2>&1 || true"))
+    )
+}
 pub fn shell(arguments: &[String]) -> String {
     arguments
         .iter()
@@ -166,4 +175,15 @@ pub fn client(options: &Options, window: &str) -> io::Result<String> {
         .or(clients.first())
         .map(|fields| fields[0].into())
         .ok_or_else(|| io::Error::other("No attached terminal client"))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn background_jobs_print_nothing_and_always_succeed() {
+        assert_eq!(
+            super::background("'/bin/agent' --socket 's' zoom"),
+            r#"run-shell -b ''\''/bin/agent'\'' --socket '\''s'\'' zoom >/dev/null 2>&1 || true'"#
+        );
+    }
 }
