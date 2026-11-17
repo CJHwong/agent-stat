@@ -68,18 +68,26 @@ impl Sandbox {
         Self { root, socket }
     }
     fn tmux(&self, args: &[&str]) -> String {
-        success(
-            Command::new("tmux")
-                .arg("-S")
-                .arg(&self.socket)
-                .current_dir(&self.root)
-                .env("HOME", &self.root)
-                .env("AGENT_STAT_DIR", self.root.join("events"))
-                .env("TMUX_SIDEBAR_STATE_DIR", self.root.join("state"))
-                .args(args)
-                .output()
-                .unwrap(),
-        )
+        let output = Command::new("tmux")
+            .arg("-S")
+            .arg(&self.socket)
+            .current_dir(&self.root)
+            .env("HOME", &self.root)
+            .env("AGENT_STAT_DIR", self.root.join("events"))
+            .env("TMUX_SIDEBAR_STATE_DIR", self.root.join("state"))
+            .args(args)
+            .output()
+            .unwrap();
+        // A rare failure under load must name its call and what the sidebar logged.
+        if !output.status.success() {
+            let log = fs::read_to_string(self.root.join("state/sidebar.log")).unwrap_or_default();
+            let tail = log.lines().rev().take(5).collect::<Vec<_>>();
+            panic!(
+                "tmux {args:?}: {}\nsidebar log, newest first: {tail:#?}",
+                String::from_utf8_lossy(&output.stderr).trim_end()
+            );
+        }
+        success(output)
     }
     fn command(&self, session: &str, action: &str) -> Command {
         let mut command = Command::new(binary());
