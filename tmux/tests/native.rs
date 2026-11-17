@@ -167,7 +167,7 @@ fn auto_zoom_dims_only_inactive_content_and_restores_brightness() {
             .output()
             .unwrap(),
     );
-    sandbox.start("dim", r"printf '\033[38;2;200;100;50mFIRST'; sleep 120");
+    sandbox.start("dim", r"printf '\033[38;2;200;100;50mFIRST'; sleep 3600");
     if sandbox.tmux(&["display-message", "-p", "#{>=:#{version},3.8}"]) != "1" {
         eprintln!("SKIP: pane color dimming requires tmux 3.8");
         return;
@@ -192,7 +192,7 @@ fn auto_zoom_dims_only_inactive_content_and_restores_brightness() {
         "-P",
         "-F",
         "#{pane_id}",
-        r"printf '\033[38;2;200;100;50mSECOND'; sleep 120",
+        r"printf '\033[38;2;200;100;50mSECOND'; sleep 3600",
     ]);
     let sidebar = sandbox.tmux(&[
         "display-message",
@@ -329,7 +329,7 @@ fn auto_zoom_dims_only_inactive_content_and_restores_brightness() {
 #[test]
 fn focus_zoom_preserves_each_window_layout_and_sidebar_width() {
     let sandbox = Sandbox::new();
-    sandbox.start("focus", "sleep 120");
+    sandbox.start("focus", "sleep 3600");
     let first = sandbox.tmux(&["display-message", "-p", "-t", "focus:", "#{pane_id}"]);
     success(sandbox.command("focus", "enable").output().unwrap());
     let sidebar = sandbox.tmux(&[
@@ -348,7 +348,7 @@ fn focus_zoom_preserves_each_window_layout_and_sidebar_width() {
         "-P",
         "-F",
         "#{pane_id}",
-        "sleep 120",
+        "sleep 3600",
     ]);
     let original = sandbox.tmux(&["display-message", "-p", "-t", &first, "#{window_layout}"]);
     let original_geometry = sandbox.geometry(&first);
@@ -419,7 +419,7 @@ fn focus_zoom_preserves_each_window_layout_and_sidebar_width() {
     .unwrap();
     assert_eq!(snapshot["windows"][0]["focus_zoom"], false);
     assert_eq!(snapshot["windows"][1]["focus_zoom"], true);
-    sandbox.tmux(&["new-session", "-d", "-s", "keeper", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keeper", "sleep 3600"]);
     sandbox.tmux(&["kill-session", "-t", "focus"]);
     success(
         sandbox
@@ -454,7 +454,7 @@ fn focus_zoom_preserves_each_window_layout_and_sidebar_width() {
 fn focus_zoom_handles_stacked_and_nested_layouts_without_touching_the_sidebar() {
     for nested in [false, true] {
         let sandbox = Sandbox::new();
-        sandbox.start("focus", "sleep 120");
+        sandbox.start("focus", "sleep 3600");
         success(sandbox.command("focus", "enable").output().unwrap());
         let first = sandbox.tmux(&["display-message", "-p", "-t", "focus:", "#{pane_id}"]);
         let sidebar = sandbox.tmux(&[
@@ -470,10 +470,10 @@ fn focus_zoom_handles_stacked_and_nested_layouts_without_touching_the_sidebar() 
             if nested { "-h" } else { "-v" },
             "-t",
             &first,
-            "sleep 120",
+            "sleep 3600",
         ]);
         if nested {
-            sandbox.tmux(&["split-window", "-d", "-v", "-t", &first, "sleep 120"]);
+            sandbox.tmux(&["split-window", "-d", "-v", "-t", &first, "sleep 3600"]);
         }
         let original_geometry = sandbox.geometry(&first);
         success(
@@ -562,7 +562,7 @@ fn focus_toggle_is_clickable_and_native_selection_enlarges_content() {
             .output()
             .unwrap(),
     );
-    sandbox.start("focus", "sleep 120");
+    sandbox.start("focus", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -590,7 +590,7 @@ fn focus_toggle_is_clickable_and_native_selection_enlarges_content() {
         "-P",
         "-F",
         "#{pane_id}",
-        "sleep 120",
+        "sleep 3600",
     ]);
     let original_geometry = sandbox.geometry(&first);
     let mut client = Client::attach(&sandbox, "focus");
@@ -719,7 +719,7 @@ fn installer_has_one_native_runtime_and_preserves_existing_configuration() {
 #[test]
 fn native_commands_keep_numeric_session_targets_and_content_processes() {
     let sandbox = Sandbox::new();
-    sandbox.start("0", "sleep 120");
+    sandbox.start("0", "sleep 3600");
     let pane = sandbox.tmux(&["display-message", "-p", "-t", "0", "#{pane_id}"]);
     let pid = sandbox.tmux(&["display-message", "-p", "-t", &pane, "#{pane_pid}"]);
     success(sandbox.command("0", "enable").output().unwrap());
@@ -761,7 +761,7 @@ fn exited_shell_does_not_leave_a_sidebar_window() {
             .output()
             .unwrap(),
     );
-    sandbox.start("0", "sleep 120");
+    sandbox.start("0", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -816,7 +816,7 @@ fn exited_shell_does_not_leave_a_sidebar_window() {
 #[test]
 fn new_shell_starts_with_its_final_content_size() {
     let sandbox = Sandbox::new();
-    sandbox.start("0", "sleep 120");
+    sandbox.start("0", "sleep 3600");
     success(sandbox.command("0", "enable").output().unwrap());
     let marker = sandbox.root.join("initial-shell-size");
     sandbox.tmux(&[
@@ -889,7 +889,7 @@ fn exact_arguments_require_opt_in_and_legacy_snapshots_still_restore() {
             .collect::<Vec<_>>()
             .join(" "),
     );
-    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 3600"]);
     wait_for_file(&marker);
     let snapshot: serde_json::Value = serde_json::from_str(&success(
         sandbox.command("source", "snapshot").output().unwrap(),
@@ -935,7 +935,7 @@ fn shared_recovery_restores_sidebars_without_separate_renderers() {
             .output()
             .unwrap(),
     );
-    sandbox.start("source", "sleep 120");
+    sandbox.start("source", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -944,8 +944,8 @@ fn shared_recovery_restores_sidebars_without_separate_renderers() {
             .to_str()
             .unwrap(),
     ]);
-    sandbox.tmux(&["new-window", "-d", "-t", "source:", "sleep 120"]);
-    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    sandbox.tmux(&["new-window", "-d", "-t", "source:", "sleep 3600"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 3600"]);
     let content = sandbox.tmux(&["display-message", "-p", "-t", "source:", "#{pane_id}"]);
     success(sandbox.command("source", "enable").output().unwrap());
     success(sandbox.command("source", "snapshot").output().unwrap());
@@ -1014,14 +1014,14 @@ fn append_event(path: &Path, record: serde_json::Value) {
 #[test]
 fn shared_events_keep_unread_markers_and_unknown_rows_have_no_status() {
     let sandbox = Sandbox::new();
-    sandbox.start("source", "sleep 120");
+    sandbox.start("source", "sleep 3600");
     let pane = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{pane_id}"]);
     let window = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{window_id}"]);
     let pid: u32 = sandbox
         .tmux(&["display-message", "-p", "-t", &pane, "#{pane_pid}"])
         .parse()
         .unwrap();
-    sandbox.tmux(&["new-window", "-t", "source:", "sleep 120"]);
+    sandbox.tmux(&["new-window", "-t", "source:", "sleep 3600"]);
     let path = event_file(&sandbox);
     append_event(
         &path,
@@ -1097,7 +1097,7 @@ fn wrapped_agent_recovery_preserves_launcher_model_and_profile() {
     let profile = sandbox.root.join("wrapped profile");
     fs::create_dir(&profile).unwrap();
     sandbox.start("source", &format!("env CLAUDE_CONFIG_DIR={} TEST_WORKER_OUTPUT={} TEST_CHILD_PID={} {} launch claude --model test-model -- --resume original-session --effort high", quote(profile.to_str().unwrap()), quote(marker.to_str().unwrap()), quote(child_pid.to_str().unwrap()), quote(bin.join("relay").to_str().unwrap())));
-    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 3600"]);
     wait_for_file(&marker);
     let pane = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{pane_id}"]);
     wait_for_file(&child_pid);
@@ -1198,7 +1198,7 @@ fn ollama_launch_recovery(agent_name: &str) {
     let marker = sandbox.root.join("restored-arguments");
     let child_pid = sandbox.root.join("child-pid");
     sandbox.start("source", &format!("env {variable}={} TEST_WORKER_OUTPUT={} TEST_CHILD_PID={} {} launch {agent_name} --model test-model --yes",quote(profile.to_str().unwrap()),quote(marker.to_str().unwrap()),quote(child_pid.to_str().unwrap()),quote(bin.join("ollama").to_str().unwrap())));
-    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 3600"]);
     wait_for_file(&marker);
     wait_for_file(&child_pid);
     let pid: u32 = fs::read_to_string(&child_pid).unwrap().parse().unwrap();
@@ -1306,7 +1306,7 @@ fn wrapped_codex_without_hooks_recovers_the_current_conversation() {
     let marker = sandbox.root.join("codex-arguments");
     let child_pid = sandbox.root.join("codex-pid");
     sandbox.start("source", &format!("env CODEX_HOME={} TEST_WORKER_OUTPUT={} TEST_CHILD_PID={} {} launch codex --model test-model -- resume {original}",quote(profile.to_str().unwrap()),quote(marker.to_str().unwrap()),quote(child_pid.to_str().unwrap()),quote(bin.join("relay").to_str().unwrap())));
-    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 3600"]);
     wait_for_file(&marker);
     sandbox.tmux(&[
         "select-pane",
@@ -1395,7 +1395,7 @@ fn codex_switched_title_without_hooks_restores_the_current_conversation() {
             quote(bin.join("codex").to_str().unwrap())
         ),
     );
-    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 3600"]);
     wait_for_file(&marker);
     sandbox.tmux(&[
         "select-pane",
@@ -1436,7 +1436,7 @@ fn codex_switched_title_without_hooks_restores_the_current_conversation() {
     ]);
     sandbox.tmux(&["kill-session", "-t", "source"]);
     fs::remove_file(&marker).unwrap();
-    sandbox.tmux(&["new-session", "-d", "-s", "recovered-source", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "recovered-source", "sleep 3600"]);
     let original = sandbox.tmux(&[
         "display-message",
         "-p",
@@ -1482,7 +1482,7 @@ fn codex_recovery_preserves_no_daemon() {
             quote(bin.join("codex").to_str().unwrap())
         ),
     );
-    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 3600"]);
     wait_for_file(&marker);
     let pane = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{pane_id}"]);
     let pid: u32 = sandbox
@@ -1543,7 +1543,7 @@ fn agent_recovery_preserves_profile_labels_and_split_proportions() {
         quote(bin.join("claude").to_str().unwrap())
     );
     sandbox.start("source", &command);
-    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "keep", "sleep 3600"]);
     wait_for_file(&marker);
     sandbox.tmux(&[
         "set-environment",
@@ -1570,7 +1570,7 @@ fn agent_recovery_preserves_profile_labels_and_split_proportions() {
         "30",
         "-t",
         &pane,
-        "sleep 120",
+        "sleep 3600",
     ]);
     sandbox.tmux(&[
         "set-option",
@@ -1696,7 +1696,7 @@ fn wheel_session(shared: bool) -> (Sandbox, Client, Vec<String>) {
         installer.arg("--shared");
     }
     success(installer.output().unwrap());
-    sandbox.start("wheel", "sleep 120");
+    sandbox.start("wheel", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -1716,7 +1716,7 @@ fn wheel_session(shared: bool) -> (Sandbox, Client, Vec<String>) {
             "-P",
             "-F",
             "#{pane_id}",
-            "sleep 120",
+            "sleep 3600",
         ]));
     }
     success(sandbox.command("wheel", "enable").output().unwrap());
@@ -1810,7 +1810,7 @@ fn shared_sidebars_keep_mouse_keyboard_new_windows_and_service_recovery() {
             .output()
             .unwrap(),
     );
-    sandbox.start("shared", "sleep 120");
+    sandbox.start("shared", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -1837,7 +1837,7 @@ fn shared_sidebars_keep_mouse_keyboard_new_windows_and_service_recovery() {
         "-P",
         "-F",
         "#{pane_id}",
-        "sleep 120",
+        "sleep 3600",
     ]);
     sandbox.tmux(&[
         "set-option",
@@ -1933,7 +1933,7 @@ fn shared_sidebars_keep_mouse_keyboard_new_windows_and_service_recovery() {
             .contains("Second content")
     });
     let service = sandbox.tmux(&["show-option", "-sqv", "@window_sidebar_service_pid"]);
-    sandbox.tmux(&["new-session", "-d", "-s", "other", "sleep 120"]);
+    sandbox.tmux(&["new-session", "-d", "-s", "other", "sleep 3600"]);
     success(sandbox.command("other", "enable").output().unwrap());
     let mut other = Client::attach(&sandbox, "other");
     let other_sidebar = sandbox.tmux(&[
@@ -2234,7 +2234,7 @@ fn inactive_windows_resize_before_selection_with_fixed_sidebars() {
             .output()
             .unwrap(),
     );
-    sandbox.start("static", "sleep 120");
+    sandbox.start("static", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -2251,7 +2251,7 @@ fn inactive_windows_resize_before_selection_with_fixed_sidebars() {
         "-P",
         "-F",
         "#{window_id}",
-        "sleep 120",
+        "sleep 3600",
     ]);
     success(sandbox.command("static", "enable").output().unwrap());
     let original = sandbox.tmux(&[
@@ -2416,8 +2416,8 @@ fn custom_default_command_survives_sidebar_configuration() {
             .output()
             .unwrap(),
     );
-    sandbox.start("custom", "sleep 120");
-    let command = "printf 'CUSTOM_COMMAND\\n'; sleep 120";
+    sandbox.start("custom", "sleep 3600");
+    let command = "printf 'CUSTOM_COMMAND\\n'; sleep 3600";
     sandbox.tmux(&["set-option", "-g", "default-command", command]);
     sandbox.tmux(&[
         "source-file",
@@ -2454,7 +2454,7 @@ fn border_titles_hide_the_local_host_name() {
             .output()
             .unwrap(),
     );
-    sandbox.start("titles", "sleep 120");
+    sandbox.start("titles", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -2506,7 +2506,7 @@ fn border_titles_render_in_the_sidebar_layout() {
             .output()
             .unwrap(),
     );
-    sandbox.start("titles", "sleep 120");
+    sandbox.start("titles", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -2608,7 +2608,7 @@ fn plain_tmux_and_new_attached_sessions_open_one_sidebar() {
         ""
     );
     drop(first);
-    let mut next = Client::open(&sandbox, &["new-session", "-s", "fresh", "sleep 120"]);
+    let mut next = Client::open(&sandbox, &["new-session", "-s", "fresh", "sleep 3600"]);
     next.wait("sidebar after an attached new-session", || {
         has_sidebar("fresh:")
     });
@@ -2635,7 +2635,7 @@ fn plain_tmux_and_new_attached_sessions_open_one_sidebar() {
 #[test]
 fn monitor_uses_requested_session_instead_of_inherited_pane() {
     let sandbox = Sandbox::new();
-    sandbox.start("requested", "sleep 120");
+    sandbox.start("requested", "sleep 3600");
     let foreign = sandbox.tmux(&[
         "new-session",
         "-d",
@@ -2644,7 +2644,7 @@ fn monitor_uses_requested_session_instead_of_inherited_pane() {
         "-P",
         "-F",
         "#{pane_id}",
-        "sleep 120",
+        "sleep 3600",
     ]);
     success(
         sandbox
@@ -2677,7 +2677,7 @@ fn monitor_uses_requested_session_instead_of_inherited_pane() {
 #[test]
 fn rename_prompts_keep_names_literal() {
     let sandbox = Sandbox::new();
-    sandbox.start("rename", "sleep 120");
+    sandbox.start("rename", "sleep 3600");
     sandbox.tmux(&["set-option", "-s", "escape-time", "20"]);
     sandbox.tmux(&["set-option", "-g", "status-keys", "emacs"]);
     let pane = sandbox.tmux(&["display-message", "-p", "-t", "rename:", "#{pane_id}"]);
@@ -2761,7 +2761,7 @@ fn terminal_controls(shared: bool) {
         installer.arg("--shared");
     }
     success(installer.output().unwrap());
-    sandbox.start("0", "sleep 120");
+    sandbox.start("0", "sleep 3600");
     sandbox.tmux(&[
         "source-file",
         sandbox
@@ -2992,7 +2992,7 @@ fn terminal_controls(shared: bool) {
     client.wait("fixed width", || {
         sandbox.tmux(&["display-message", "-p", "-t", &sidebar, "#{pane_width}"]) == "28"
     });
-    sandbox.tmux(&["split-window", "-d", "-h", "-t", &content, "sleep 120"]);
+    sandbox.tmux(&["split-window", "-d", "-h", "-t", &content, "sleep 3600"]);
     client.wait("grouped panes", || {
         sandbox
             .tmux(&["capture-pane", "-p", "-t", &sidebar])
@@ -3156,7 +3156,7 @@ fn recovery_preview_restores_an_older_snapshot() {
     success(sandbox.command("source", "snapshot").output().unwrap());
     sandbox.tmux(&["new-window", "-d", "-t", "source:1", "/bin/sh"]);
     success(sandbox.command("source", "snapshot").output().unwrap());
-    sandbox.tmux(&["respawn-pane", "-k", "-t", &content, "sleep 120"]);
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &content, "sleep 3600"]);
     fs::remove_file(&marker).unwrap();
     let mut client = Client::attach(&sandbox, "source");
     client.drain(Duration::from_millis(800));
@@ -3247,9 +3247,9 @@ fn native_recovery_preview_cancels_fast_and_restores_all_commands() {
     ]);
     wait_for_file(&second_marker);
     success(sandbox.command("source", "snapshot").output().unwrap());
-    sandbox.tmux(&["respawn-pane", "-k", "-t", &content, "sleep 120"]);
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &content, "sleep 3600"]);
     fs::remove_file(&marker).unwrap();
-    sandbox.tmux(&["respawn-pane", "-k", "-t", &second, "sleep 120"]);
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &second, "sleep 3600"]);
     fs::remove_file(&second_marker).unwrap();
     let mut client = Client::attach(&sandbox, "source");
     client.wait("sidebar frame", || {
@@ -3341,7 +3341,7 @@ fn installed_upgrade_removes_legacy_files_and_restarts_only_the_sidebar() {
         command
     };
     success(install().output().unwrap());
-    sandbox.start("0", "sleep 120");
+    sandbox.start("0", "sleep 3600");
     let installed = sandbox.root.join(".agents/tmux/agent-stat-tmux");
     let mut enable = Command::new(&installed);
     enable
@@ -3398,7 +3398,7 @@ fn installed_upgrade_removes_legacy_files_and_restarts_only_the_sidebar() {
 #[test]
 fn cached_hook_guards_are_empty_and_disappear_after_the_old_caller_exits() {
     let sandbox = Sandbox::new();
-    sandbox.start("source", "sleep 120");
+    sandbox.start("source", "sleep 3600");
     let pane = sandbox.tmux(&["display-message", "-p", "-t", "source", "#{pane_id}"]);
     let pid: u32 = sandbox
         .tmux(&["display-message", "-p", "-t", &pane, "#{pane_pid}"])
@@ -3441,7 +3441,7 @@ fn cached_hook_guards_are_empty_and_disappear_after_the_old_caller_exits() {
             0
         );
     }
-    sandbox.tmux(&["respawn-pane", "-k", "-t", &pane, "sleep 120"]);
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &pane, "sleep 3600"]);
     success(sandbox.command("source", "snapshot").output().unwrap());
     for directory in [".agents/tmux", ".config/tmux"] {
         assert!(
@@ -3696,7 +3696,7 @@ fn monitor_retains_polling_if_the_control_observer_fails() {
 fn monitor_polling(control: bool) {
     use std::os::unix::fs::PermissionsExt;
     let sandbox = Sandbox::new();
-    sandbox.start("monitor", "sleep 120");
+    sandbox.start("monitor", "sleep 3600");
     let real_tmux = success(Command::new("which").arg("tmux").output().unwrap());
     let bin = sandbox.root.join("bin");
     fs::create_dir(&bin).unwrap();
@@ -3741,7 +3741,7 @@ fn monitor_polling(control: bool) {
 #[test]
 fn targeted_shared_scans_keep_status_identity_and_refresh_attention() {
     let sandbox = Sandbox::new();
-    sandbox.start("status", "sleep 120");
+    sandbox.start("status", "sleep 3600");
     sandbox.tmux(&["set-option", "-g", "@window_sidebar_shared", "1"]);
     let pane = sandbox.tmux(&["display-message", "-p", "-t", "status:", "#{pane_id}"]);
     let pid: u32 = sandbox
@@ -3782,7 +3782,7 @@ fn targeted_shared_scans_keep_status_identity_and_refresh_attention() {
             .tmux(&["capture-pane", "-p", "-t", &sidebar])
             .contains('●')
     });
-    sandbox.tmux(&["new-window", "-t", "status:", "sleep 120"]);
+    sandbox.tmux(&["new-window", "-t", "status:", "sleep 3600"]);
     append_event(
         &path,
         serde_json::json!({"event":"PermissionRequest","session":"identity","agent_pid":pid,"agent_start":started,"tmux":pane,"ts":3}),
@@ -3792,7 +3792,7 @@ fn targeted_shared_scans_keep_status_identity_and_refresh_attention() {
             .tmux(&["capture-pane", "-p", "-t", &sidebar])
             .contains('*')
     });
-    sandbox.tmux(&["respawn-pane", "-k", "-t", &pane, "sleep 120"]);
+    sandbox.tmux(&["respawn-pane", "-k", "-t", &pane, "sleep 3600"]);
     client.wait("an exited process loses its status", || {
         !sandbox
             .tmux(&["capture-pane", "-p", "-t", &sidebar])
