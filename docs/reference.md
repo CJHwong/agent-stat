@@ -25,10 +25,10 @@ The row still says the turn failed. Work in flight counts whoever is doing it: a
 turn that finished while its subagents run on stays green, keeps pulsing, and stays out
 of the badge until its last subagent stops. A session that vanished without an end record
 is waiting on nobody, so it takes the same grey as a clean end and stays out of the count.
-A Codex run that stopped and then exited is the exception: an orchestrator runs Codex that
-way, so the run left an answer. It stays red until you click it, or for 24 hours. A run the
-end bridge closed after a Stop stays the same way, whatever the agent. A run the bridge
-closed before its turn finished ends like any other.
+A run the end bridge closed after a Stop is the exception: it left an answer, so it stays
+red until you click it, or for 24 hours. A run the bridge closed before its turn finished
+ends like any other. A Codex you close with its tab sends no end record, so it clears as a
+vanished process.
 A click on a session whose process ended moves nothing, because its old pane can belong to
 something else now.
 
@@ -165,7 +165,7 @@ It waits for a complete line before it adds a record to the cache.
 | Constant | Value | What it covers |
 |---|---|---|
 | `finishedGraceSeconds` | 10 | A row whose session reported an end stays visible this long, then clears. |
-| `crashedGraceSeconds` | 60 | A local or connected remote row whose process vanished without an end record. A finished Codex run is exempt. |
+| `crashedGraceSeconds` | 60 | A local or connected remote row whose process vanished without an end record. A run the end bridge closed after its turn is exempt. |
 | `visibleWindowSeconds` | 24 hours | After this a session leaves the panel, unless its process is known alive. |
 | `failureWindowSeconds` | 12 hours | A failure leaves after this even if you never clicked it. |
 

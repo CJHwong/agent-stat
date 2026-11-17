@@ -163,8 +163,12 @@ run finishes, passing the id of the agent session it just ran:
 ```
 
 The guard is there because a run event is not the only one an orchestrator raises: a
-budget warning carries no session at all. The panel folds that record into `ended`, and
-the row clears after ten seconds.
+budget warning carries no session at all. If the run finished its turn, the row keeps the
+answer and stays until you click it. If the run ended mid-turn, the row ends and clears
+after ten seconds.
+
+Send the line for every way a run can finish. A run that ends without it clears a minute
+after its process exits, before you read its answer.
 
 ## Start it at login
 

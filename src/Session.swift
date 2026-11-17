@@ -284,12 +284,11 @@ struct Session {
     /// in the row text, leaves it out of the attention count, and must not paint
     /// it as a row that needs you.
     ///
-    /// A finished Codex turn is the exception. An orchestrator runs Codex as one turn
-    /// that stops and exits with no end record, so that run left an answer for you.
-    /// A Claude that stops and then loses its process is a closed terminal.
+    /// A run the end bridge closed after its turn is the exception: it left an answer
+    /// for you. Without that record a finished turn whose process is gone is a closed
+    /// terminal, for Codex too, which sends no end record when its tab closes.
     var vanishedWithoutEnd: Bool {
-        alive == false && !terminalStates.contains(state)
-            && !(state == .idle && (agent == "codex" || runEnded))
+        alive == false && !terminalStates.contains(state) && !finishedRun
     }
 
     func age(now: Int) -> Int {

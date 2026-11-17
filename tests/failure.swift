@@ -144,13 +144,17 @@ func testFinishedRunOutlivesItsProcess() {
     let host = "Other-Machine"
     let store = SessionStore(localHost: HOST)
     store.apply(decode(#"{"ts":800,"event":"Stop","agent":"codex","session":"done","agent_pid":7}"#), host: host)
+    store.apply(decode(#"{"ts":800,"event":"RunEnd","session":"done"}"#), host: host)
     store.apply(decode(#"{"ts":800,"event":"PreToolUse","agent":"codex","session":"busy","agent_pid":8,"tool":"Bash"}"#),
                 host: host)
-    store.reapRemote(host: host, alive: ["done": false, "busy": false], now: 801)
+    // A codex closed with its tab after a turn sends Stop and no end record. You
+    // closed it, so it has nothing left to ask.
+    store.apply(decode(#"{"ts":800,"event":"Stop","agent":"codex","session":"closed","agent_pid":9}"#), host: host)
+    store.reapRemote(host: host, alive: ["done": false, "busy": false, "closed": false], now: 801)
     let later = 801 + SessionStore.crashedGraceSeconds + 1
     let finished = SessionKey(host: host, id: "done")
-    check(!store.sessions[finished]!.vanishedWithoutEnd, "a run that stopped and exited did not crash")
-    checkEqual(store.visible(now: later).map(\.key.id), ["done"], "it stays, and a crashed run does not")
+    check(!store.sessions[finished]!.vanishedWithoutEnd, "a run the bridge ended did not crash")
+    checkEqual(store.visible(now: later).map(\.key.id), ["done"], "only the run the bridge ended stays")
     checkEqual(store.attentionCount(now: later), 1, "and it needs you")
 
     var routed = store.sessions[finished]!
