@@ -326,7 +326,9 @@ final class SessionStore {
         }
         if session.state != .failed, let gone = session.goneSince,
            now - gone > Self.crashedGraceSeconds {
-            return false
+            // A run that finished and then exited still has an answer for you.
+            // Like a failure, it stays until you click it.
+            return needsAttention(session)
         }
         return true
     }

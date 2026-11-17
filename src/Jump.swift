@@ -104,6 +104,9 @@ enum Jumper {
         // remote session lands in the wrong tab.
         if let host = session.onAnotherMachine {
             guard let route = routes.route(for: host) else { return .remote(host: host) }
+            // A pane id outlives its process, and a tmux restart hands it to another
+            // pane. An ended run has nothing to show, so the click moves nothing.
+            if session.alive == false { return .unavailable("that run has ended on \(host)") }
             let folder = session.launchCwd.isEmpty ? session.cwd : session.launchCwd
             return .route(host: host, route: route, pane: session.tmuxPane, folder: folder,
                           title: session.title, socket: session.tmuxSocket)

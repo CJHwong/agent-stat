@@ -19,28 +19,24 @@ extension Jumper {
         } else {
             step = .failed("that session reports no tmux pane on \(host)")
         }
-        let message: String?
         switch step {
-        case .selected: message = nil
-        case .failed(let text): message = text
+        case .selected: break
+        // A failed selection left that machine on some other pane, so raising its
+        // tab would show the wrong place.
+        case .failed(let text): return .failed(message: text)
         case .detached(let target): return .attach(target)
         }
         let tabs = tabs(for: route, in: snapshot)
         switch tabs.count {
         case 1:
-            let outcome = performGhostty(tab: tabs[0])
-            if let message { return .failed(message: message) }
-            return outcome
+            return performGhostty(tab: tabs[0])
         case 2...:
-            // A failed selection matters more than the tab question.
-            if let message { return .failed(message: message) }
             return .pick(folder: route.tab ?? host, tabs: tabs)
         default:
-            if let message { return .failed(message: message) }
             if let name = route.tab, !name.isEmpty {
                 return .failed(message: "selected on \(host), no tab named \(name) here")
             }
-            return .done(message: message ?? "selected the pane on \(host)")
+            return .done(message: "selected the pane on \(host)")
         }
     }
 

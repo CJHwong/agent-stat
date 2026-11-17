@@ -382,6 +382,7 @@ testClaudeFailure()
 testCodexFailure()
 testCodexEarlyEnd(); testQuietLiveSession(); testOldFailure()
 testFailureLifecycle()
+testFinishedRunOutlivesItsProcess()
 func testPlacement() {
     print("panel placement")
     let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)

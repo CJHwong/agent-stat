@@ -138,3 +138,30 @@ func testFailureLifecycle() {
                "RunEnd keeps a failure")
     checkEqual(run.attentionCount(now: 611), 1, "and it still needs you")
 }
+
+func testFinishedRunOutlivesItsProcess() {
+    print("a finished run stays after its process exits")
+    let host = "Other-Machine"
+    let store = SessionStore(localHost: HOST)
+    store.apply(decode(#"{"ts":800,"event":"Stop","agent":"codex","session":"done","agent_pid":7}"#), host: host)
+    store.apply(decode(#"{"ts":800,"event":"PreToolUse","agent":"codex","session":"busy","agent_pid":8,"tool":"Bash"}"#),
+                host: host)
+    store.reapRemote(host: host, alive: ["done": false, "busy": false], now: 801)
+    let later = 801 + SessionStore.crashedGraceSeconds + 1
+    let finished = SessionKey(host: host, id: "done")
+    check(!store.sessions[finished]!.vanishedWithoutEnd, "a run that stopped and exited did not crash")
+    checkEqual(store.visible(now: later).map(\.key.id), ["done"], "it stays, and a crashed run does not")
+    checkEqual(store.attentionCount(now: later), 1, "and it needs you")
+
+    var routed = store.sessions[finished]!
+    routed.tmuxPane = "%1"
+    let routes = try! Routes.decode(Data(#"{"Other-Machine": {"tmux": ["ssh", "peer", "tmux"]}}"#.utf8))
+    guard case .unavailable(let message) = Jumper.plan(for: routed, routes: routes) else {
+        check(false, "a click on an ended run does not select a pane")
+        return
+    }
+    check(message.contains("ended"), "and says the run ended")
+
+    store.acknowledge(finished, now: later)
+    check(store.visible(now: later).isEmpty, "a click clears the finished run")
+}

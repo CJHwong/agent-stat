@@ -412,7 +412,7 @@ class StreamEventsTests(unittest.TestCase):
         self.assertEqual(len((self.hosts / TODAY).read_bytes().splitlines()), 1)
 
     def test_titles_cover_quiet_sessions_past_the_alive_window(self):
-        old = time.time() - 13 * 3600
+        old = time.time() - 25 * 3600
         self.write(content=record(agent="codex", session="old", event="Stop", ts=old))
         profile = self.directory / ".codex"
         profile.mkdir()
@@ -424,7 +424,7 @@ class StreamEventsTests(unittest.TestCase):
         self.assertEqual(consumer.next("status")["titles"], {"old": "A quiet name"})
 
     def test_title_falls_back_to_the_first_user_message(self):
-        old = time.time() - 13 * 3600
+        old = time.time() - 25 * 3600
         self.write(content=record(agent="codex", session="quiet", event="Stop", ts=old))
         profile = self.directory / ".codex"
         rollout = profile / "sessions/2026/10/23"
@@ -668,18 +668,23 @@ time.sleep(0.3)
             self.assertLess(time.monotonic(), deadline)
 
     def test_old_session_start_keeps_identity_for_recent_events(self):
-        started = record(agent_start="wrong start", ts=time.time() - 13 * 3600)
+        started = record(agent_start="wrong start", ts=time.time() - 25 * 3600)
         self.write(content=started + record(event="Stop"))
         self.assertFalse(self.start().next("status")["alive"]["sample"])
 
     def test_process_start_mismatch_and_old_session_are_not_alive(self):
         self.write(
             content=record(agent_start="wrong start")
-            + record("expired", ts=time.time() - 13 * 3600)
+            + record("expired", ts=time.time() - 25 * 3600)
         )
         status = self.start().next("status")
         self.assertFalse(status["alive"]["sample"])
         self.assertNotIn("expired", status["alive"])
+
+    def test_alive_window_matches_the_panel_window(self):
+        # The panel keeps a row for 24 hours. A row it gets no answer for stays up.
+        self.write(content=record("half_day", ts=time.time() - 13 * 3600))
+        self.assertTrue(self.start().next("status")["alive"]["half_day"])
 
 
 if __name__ == "__main__":

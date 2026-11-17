@@ -273,8 +273,12 @@ struct Session {
     /// local session whose pid is gone has nothing left to do. The panel says so
     /// in the row text, leaves it out of the attention count, and must not paint
     /// it as a row that needs you.
+    ///
+    /// A finished Codex turn is the exception. An orchestrator runs Codex as one turn
+    /// that stops and exits with no end record, so that run left an answer for you.
+    /// A Claude that stops and then loses its process is a closed terminal.
     var vanishedWithoutEnd: Bool {
-        alive == false && !terminalStates.contains(state)
+        alive == false && !terminalStates.contains(state) && !(agent == "codex" && state == .idle)
     }
 
     func age(now: Int) -> Int {

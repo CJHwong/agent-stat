@@ -87,6 +87,7 @@ The helper sends status every five seconds.
 Status also carries names for known sessions from the local Codex indexes.
 Status includes process identifiers and start times, so a reused identifier cannot revive a closed session.
 Remote processes use the same 60-second grace period as local processes after they vanish.
+The helper reports liveness for the same 24 hours the panel keeps a row. A row with no answer stays up, so a shorter helper window left ended runs on screen.
 
 ## Work in flight counts whoever is doing it
 

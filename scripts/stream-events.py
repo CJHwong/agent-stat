@@ -21,7 +21,9 @@ import time
 PROTOCOL = 1
 CHUNK_SIZE = 65536
 TAIL_SIZE = 4096
-SESSION_AGE = 12 * 3600
+# The panel keeps a row for 24 hours. A row it gets no liveness answer for stays
+# up, so a shorter window here leaves ended runs on screen until that day is out.
+SESSION_AGE = 24 * 3600
 
 
 class StreamError(Exception):
