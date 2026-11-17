@@ -265,6 +265,19 @@ def exercise(root, tmux):
         assert "selected the pane" in jump()
         assert command("display-message", "-p", "-t", "probe", "#{pane_id}") == target
         print("PASS real jump selects the target window and split pane")
+        command("select-window", "-t", other)
+        # An app started by launchd has no locale, and tmux then escapes the field separator.
+        bare = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in ("LANG", "LC_ALL", "LC_CTYPE")
+        }
+        outcome = subprocess.check_output(
+            [str(binary), str(routes), str(root)], text=True, env=bare
+        )
+        assert "selected the pane" in outcome, outcome
+        assert command("display-message", "-p", "-t", "probe", "#{pane_id}") == target
+        print("PASS a jump without a locale still reads the pane listing")
         with tempfile.TemporaryDirectory(
             prefix="agent-stat-remote-alias-"
         ) as alias_folder:

@@ -86,6 +86,7 @@ func testNavigationCommandCounts() {
         try """
         #!/bin/sh
         cd "$(dirname "$0")" || exit 1
+        if [ "$1" = -u ]; then shift; fi
         printf '%s\\n' "$1" >> calls
         case "$*" in
             list-panes*) printf '%%12\\037@3\\0371\\037$1\\037/dev/ttys101\\037/canonical\\037Synthetic target\\n'

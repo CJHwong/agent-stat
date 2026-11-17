@@ -174,6 +174,7 @@ private func withRemoteJump(title: String = "Memory report", pane: String? = nil
         try """
         #!/bin/sh
         cd "$(dirname "$0")" || exit 1
+        if [ "$1" = -u ]; then shift; fi
         case "$*" in
             list-panes*) cat listing ;;
             run-shell*) exit 1 ;;

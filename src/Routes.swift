@@ -28,7 +28,7 @@ struct Route: Decodable {
     }
 
     func command(_ arguments: [String]) -> [String] {
-        (recordedSocket.map { ["-S", $0] } ?? []) + arguments
+        TmuxTargeting.clientOptions + (recordedSocket.map { ["-S", $0] } ?? []) + arguments
     }
 
     var argv: [String] {

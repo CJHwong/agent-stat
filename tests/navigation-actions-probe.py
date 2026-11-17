@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory(prefix="jump-actions-") as directory:
 cd "$(dirname "$0")" || exit 1
 label=$1
 shift
+if [ "$1" = -u ]; then shift; fi
 case "$1" in
 list-panes) if [ "$label" = slow ]; then sleep 0.5; fi
 printf '%%1\\037@1\\0371\\037$1\\037\\037/work\\037\\n' ;;

@@ -24,6 +24,10 @@ enum TmuxTargeting {
     /// watching moves nothing you can see. The title is last, so one listing
     /// serves both a title match and the pane details: a title jump then needs
     /// one remote call instead of two.
+    /// An app started by launchd has no locale. Without -u, tmux then writes the
+    /// field separator and every non-ASCII title as underscores, and no pane matches.
+    static let clientOptions = ["-u"]
+
     static let listing = [
         "list-panes", "-a",
         "-F#{pane_id}\u{1f}#{window_id}\u{1f}#{session_attached}\u{1f}#{session_id}"

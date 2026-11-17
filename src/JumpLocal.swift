@@ -36,7 +36,7 @@ extension Jumper {
     }
 
     private static func listPanes(socket: String?) -> (result: Result, argv: [String]) {
-        let socketArguments = socket.map { ["-S", $0] } ?? []
+        let socketArguments = TmuxTargeting.clientOptions + (socket.map { ["-S", $0] } ?? [])
         let candidates = ["tmux", "/opt/homebrew/bin/tmux", "/usr/local/bin/tmux"]
         var last = Result(status: -1, output: "")
         for candidate in candidates {
@@ -48,7 +48,7 @@ extension Jumper {
     }
 
     static func localClientsContain(_ tabs: [GhosttyTab], socket: String?) -> Bool {
-        let socketArguments = socket.map { ["-S", $0] } ?? []
+        let socketArguments = TmuxTargeting.clientOptions + (socket.map { ["-S", $0] } ?? [])
         for candidate in ["tmux", "/opt/homebrew/bin/tmux", "/usr/local/bin/tmux"] {
             let clients = runTmux([candidate] + socketArguments, ["list-clients", "-F#{client_tty}"])
             if clients.status == 0 {
