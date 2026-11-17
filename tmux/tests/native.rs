@@ -3437,6 +3437,19 @@ fn cached_hook_guards_are_empty_and_disappear_after_the_old_caller_exits() {
     }
 }
 
+/// A monitor this test stopped. A panic before it continues would leave it
+/// stopped for good, and a stopped process ignores the SIGTERM a cleanup sends.
+struct StoppedMonitor(std::process::Child);
+impl Drop for StoppedMonitor {
+    fn drop(&mut self) {
+        if matches!(self.0.try_wait(), Ok(None)) {
+            unsafe { libc::kill(self.0.id() as i32, libc::SIGCONT) };
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+}
+
 #[test]
 fn old_monitor_exits_when_the_socket_and_session_name_are_reused() {
     let sandbox = Sandbox::new();
@@ -3451,12 +3464,14 @@ fn old_monitor_exits_when_the_socket_and_session_name_are_reused() {
         ),
     );
     wait_for_file(&marker);
-    let mut monitor = sandbox
-        .command("source", "monitor")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .unwrap();
+    let mut monitor = StoppedMonitor(
+        sandbox
+            .command("source", "monitor")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
     use sha2::Digest;
     let hash = format!(
         "{:x}",
@@ -3469,18 +3484,24 @@ fn old_monitor_exits_when_the_socket_and_session_name_are_reused() {
     wait_for_file(&snapshot);
     let saved = fs::read(&snapshot).unwrap();
     std::thread::sleep(Duration::from_millis(150));
-    assert_eq!(unsafe { libc::kill(monitor.id() as i32, libc::SIGSTOP) }, 0);
+    assert_eq!(
+        unsafe { libc::kill(monitor.0.id() as i32, libc::SIGSTOP) },
+        0
+    );
     sandbox.tmux(&["kill-server"]);
     sandbox.start("source", "/bin/sh");
-    assert_eq!(unsafe { libc::kill(monitor.id() as i32, libc::SIGCONT) }, 0);
+    assert_eq!(
+        unsafe { libc::kill(monitor.0.id() as i32, libc::SIGCONT) },
+        0
+    );
     let until = std::time::Instant::now() + Duration::from_secs(4);
-    while monitor.try_wait().unwrap().is_none() && std::time::Instant::now() < until {
+    while monitor.0.try_wait().unwrap().is_none() && std::time::Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));
     }
-    let exited = monitor.try_wait().unwrap().is_some();
+    let exited = monitor.0.try_wait().unwrap().is_some();
     if !exited {
-        monitor.kill().unwrap();
-        monitor.wait().unwrap();
+        monitor.0.kill().unwrap();
+        monitor.0.wait().unwrap();
     }
     assert!(exited, "The old monitor adopted the restarted server");
     assert!(
