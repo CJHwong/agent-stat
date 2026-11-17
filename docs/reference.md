@@ -26,7 +26,9 @@ turn that finished while its subagents run on stays green, keeps pulsing, and st
 of the badge until its last subagent stops. A session that vanished without an end record
 is waiting on nobody, so it takes the same grey as a clean end and stays out of the count.
 A Codex run that stopped and then exited is the exception: an orchestrator runs Codex that
-way, so the run left an answer. It stays red until you click it, or for 24 hours.
+way, so the run left an answer. It stays red until you click it, or for 24 hours. A run the
+end bridge closed after a Stop stays the same way, whatever the agent. A run the bridge
+closed before its turn finished ends like any other.
 A click on a session whose process ended moves nothing, because its old pane can belong to
 something else now.
 

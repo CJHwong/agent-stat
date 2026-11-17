@@ -165,3 +165,52 @@ func testFinishedRunOutlivesItsProcess() {
     store.acknowledge(finished, now: later)
     check(store.visible(now: later).isEmpty, "a click clears the finished run")
 }
+
+func testRunEnd() {
+    print("the run end bridge")
+    let now = 900_000
+    let other = "laptop"
+    let id = "01a1456c-85a3-7312-b94d-5a38b040104f"
+    let key = SessionKey(host: other, id: id)
+    let store = SessionStore(localHost: HOST)
+    store.apply(decode(#"{"ts":\#(now - 5),"event":"Stop","agent":"codex","agent_pid":55062,"session":"\#(id)","cwd":"/w/runner/workspaces/github","tmux":"%1754"}"#),
+                host: other)
+    checkEqual(store.visible(now: now).count, 1, "a finished remote codex row is shown")
+    checkEqual(store.sessions[key]!.state, .idle, "and it is waiting on you")
+
+    // The record the bridge writes carries only ts, event and session. Everything
+    // else the panel shows comes from that session's own hook records.
+    store.apply(decode(#"{"ts":\#(now),"event":"RunEnd","session":"\#(id)"}"#), host: other)
+    checkEqual(store.sessions[key]!.state, .idle, "a finished run keeps its answer")
+    check(store.sessions[key]!.finishedRun, "and the bridge marks the run over")
+    checkEqual(store.sessions[key]!.agent, "codex", "the agent name survives the smaller record")
+    checkEqual(store.sessions[key]!.tmuxPane, "%1754", "and so does the terminal to go back to")
+    store.reapRemote(host: other, alive: [id: false], now: now + 1)
+    let later = now + SessionStore.crashedGraceSeconds + 2
+    checkEqual(store.visible(now: later).count, 1, "it stays after its process exits")
+    checkEqual(store.attentionCount(now: later), 1, "and it still needs you")
+    store.acknowledge(key, now: later)
+    checkEqual(store.visible(now: later).count, 0, "a click clears it")
+
+    // A Claude run the bridge ended stays the same way. Without the bridge record,
+    // a Claude whose process is gone after a Stop is a closed terminal.
+    let claude = SessionStore(localHost: HOST)
+    claude.apply(decode(#"{"ts":\#(now - 5),"event":"Stop","agent":"claude","session":"c"}"#), host: other)
+    claude.apply(decode(#"{"ts":\#(now),"event":"RunEnd","session":"c"}"#), host: other)
+    claude.reapRemote(host: other, alive: ["c": false], now: now + 1)
+    checkEqual(claude.visible(now: later).count, 1, "a finished Claude run stays too")
+
+    // A run that ends before its turn finished is not an answer.
+    let cut = SessionStore(localHost: HOST)
+    cut.apply(decode(#"{"ts":\#(now - 5),"event":"UserPromptSubmit","agent":"claude","session":"u"}"#), host: other)
+    cut.apply(decode(#"{"ts":\#(now),"event":"RunEnd","session":"u"}"#), host: other)
+    checkEqual(cut.sessions[SessionKey(host: other, id: "u")]!.state, .ended, "an unfinished run ends")
+    checkEqual(cut.visible(now: now + SessionStore.finishedGraceSeconds + 1).count, 0,
+               "and clears after the grace period")
+
+    // A record for a session nobody has seen must not invent a row.
+    let clean = SessionStore(localHost: HOST)
+    clean.apply(decode(#"{"ts":\#(now),"event":"RunEnd","session":"01a1456c-0000-0000-0000-000000000000"}"#),
+                host: other)
+    checkEqual(clean.visible(now: now).count, 0, "an end record with no start shows nothing")
+}

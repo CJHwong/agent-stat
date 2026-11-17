@@ -78,6 +78,10 @@ struct Session {
     /// Whether the session reported anything before an end record. A bare SessionEnd
     /// from a Codex app-server session is not a failed turn; it is not a row at all.
     var sawActivity = false
+    /// An orchestrator said the run is over. Set only after a finished turn, which
+    /// left an answer for you, so the row stays until you click it.
+    var runEnded = false
+    var finishedRun: Bool { runEnded && state == .idle }
 
     init(key: SessionKey) {
         self.key = key
@@ -188,7 +192,13 @@ struct Session {
             // Deliberately not SessionEnd: codex never sent one, and a record
             // that borrowed that name would read as codex's own report. A run that
             // ends before Codex sent Stop did not finish, so it fails like one.
-            end(record, inferFailure: true)
+            guard state == .idle else {
+                end(record, inferFailure: true)
+                return
+            }
+            // A finished turn keeps its answer. Nothing runs on after the run.
+            runEnded = true
+            liveSubagents.removeAll()
         default:
             // SubagentStart, SubagentStop, and anything a newer writer adds.
             // Recognized, deliberately not a state change and not an ask.
@@ -278,7 +288,8 @@ struct Session {
     /// that stops and exits with no end record, so that run left an answer for you.
     /// A Claude that stops and then loses its process is a closed terminal.
     var vanishedWithoutEnd: Bool {
-        alive == false && !terminalStates.contains(state) && !(agent == "codex" && state == .idle)
+        alive == false && !terminalStates.contains(state)
+            && !(state == .idle && (agent == "codex" || runEnded))
     }
 
     func age(now: Int) -> Int {

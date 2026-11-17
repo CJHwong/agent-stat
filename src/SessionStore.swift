@@ -324,6 +324,8 @@ final class SessionStore {
             // exception: it asks for you, so it stays until you deal with it.
             return now - session.lastTs <= Self.finishedGraceSeconds
         }
+        // A finished run has no process to watch, so your click is what clears it.
+        if session.finishedRun { return needsAttention(session) }
         if session.state != .failed, let gone = session.goneSince,
            now - gone > Self.crashedGraceSeconds {
             // A run that finished and then exited still has an answer for you.

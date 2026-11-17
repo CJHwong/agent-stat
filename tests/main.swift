@@ -803,38 +803,6 @@ func testGroupingByMachine() {
     checkEqual(single[0].sessions.count, 1, "and it holds every row")
 }
 
-func testRunEnd() {
-    print("the run end bridge")
-    let now = 900_000
-    let other = "laptop"
-    let id = "01a1456c-85a3-7312-b94d-5a38b040104f"
-    let key = SessionKey(host: other, id: id)
-    let store = SessionStore(localHost: HOST)
-    store.apply(decode(#"{"ts":\#(now - 5),"event":"Stop","agent":"codex","agent_pid":55062,"session":"\#(id)","cwd":"/w/runner/workspaces/github","tmux":"%1754"}"#),
-                host: other)
-    checkEqual(store.visible(now: now).count, 1, "a finished remote codex row is shown")
-    checkEqual(store.sessions[key]!.state, .idle, "and it is waiting on you")
-
-    // The record the bridge writes carries only ts, event and session. Everything
-    // else the panel shows comes from that session's own hook records.
-    store.apply(decode(#"{"ts":\#(now),"event":"RunEnd","session":"\#(id)"}"#), host: other)
-    checkEqual(store.sessions[key]!.state, .ended, "the bridge record ends it")
-    checkEqual(store.sessions[key]!.agent, "codex", "the agent name survives the smaller record")
-    checkEqual(store.sessions[key]!.tmuxPane, "%1754", "and so does the terminal to go back to")
-    checkEqual(store.needsAttention(store.sessions[key]!), false, "an ended row no longer needs you")
-
-    checkEqual(store.visible(now: now + SessionStore.finishedGraceSeconds).count, 1,
-               "it is still listed inside the grace period")
-    checkEqual(store.visible(now: now + SessionStore.finishedGraceSeconds + 1).count, 0,
-               "and gone after it, with no liveness check available on another machine")
-
-    // A record for a session nobody has seen must not invent a row.
-    let clean = SessionStore(localHost: HOST)
-    clean.apply(decode(#"{"ts":\#(now),"event":"RunEnd","session":"01a1456c-0000-0000-0000-000000000000"}"#),
-                host: other)
-    checkEqual(clean.visible(now: now).count, 0, "an end record with no start shows nothing")
-}
-
 testSubagentsIgnored()
 testMachineGating()
 testPlacement()
