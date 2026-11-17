@@ -255,17 +255,17 @@ enum Jumper {
         let found = matching.isEmpty && snapshot != nil
             ? ghosttyTabs().filter { $0.name.localizedCaseInsensitiveContains(name) }
             : matching
-        // An unrelated title can carry the same word. Only read processes for that case.
-        guard found.count > 1, let destination = sshDestination(route.argv) else { return found }
+        // An unrelated local title can carry the same word, such as a session named
+        // after the host. Raising it would show this machine as if it were the other.
+        guard !found.isEmpty, let destination = sshDestination(route.argv) else { return found }
         let processes = run("/bin/ps", ["-A", "-o", "tty=,command="]).output
-        return preferSSH(found, destination: destination, processes: processes)
+        return runningSSH(found, destination: destination, processes: processes)
     }
 
-    /// Keep the tabs whose terminal runs ssh to the destination, when any does.
-    static func preferSSH(_ tabs: [GhosttyTab], destination: String, processes: String) -> [GhosttyTab] {
+    /// Keep only the tabs whose terminal runs ssh to the destination.
+    static func runningSSH(_ tabs: [GhosttyTab], destination: String, processes: String) -> [GhosttyTab] {
         let terminals = ttysRunningSSH(to: destination, in: processes)
-        let running = tabs.filter { terminals.contains($0.tty) }
-        return running.isEmpty ? tabs : running
+        return tabs.filter { terminals.contains($0.tty) }
     }
 
     /// The host an ssh command line connects to: its first argument that is not an option.

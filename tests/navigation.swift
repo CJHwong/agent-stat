@@ -253,10 +253,12 @@ func testRouteTabPrefersTheSSHTerminal() {
                "only a terminal that runs ssh to the host counts")
     let ssh = GhosttyTab(id: "a", windowId: "w", name: "ssh office", cwd: "/", tty: "/dev/ttys001")
     let other = GhosttyTab(id: "b", windowId: "w", name: "Office notes", cwd: "/", tty: "/dev/ttys002")
-    checkEqual(Jumper.preferSSH([ssh, other], destination: "office", processes: processes).map(\.id), ["a"],
+    checkEqual(Jumper.runningSSH([ssh, other], destination: "office", processes: processes).map(\.id), ["a"],
                "the ssh tab wins over a tab that only shares the name")
-    checkEqual(Jumper.preferSSH([ssh, other], destination: "laptop", processes: processes).map(\.id), ["a", "b"],
-               "no ssh tab to the host keeps every named tab")
+    checkEqual(Jumper.runningSSH([other], destination: "office", processes: processes).map(\.id), [],
+               "a local tab that only shares the name is not the host's tab")
+    checkEqual(Jumper.runningSSH([ssh, other], destination: "laptop", processes: processes).map(\.id), [],
+               "no ssh tab to the host means no tab")
 }
 
 func testAttachCommandSurvivesBothShells() {
