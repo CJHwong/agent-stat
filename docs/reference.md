@@ -120,6 +120,7 @@ If the index is missing or unreadable, the hook still writes the event without a
 | `AGENT_STAT_DIR` | Point the app at another events directory. |
 | `AGENT_STAT_ROUTES` | Point the app at another routes file. |
 | `AGENT_STAT_MEMORY` | Point the app at another file for what you have dealt with. |
+| `AGENT_STAT_LOG` | Point the app at another log file. The test gate sets it. |
 | `AGENT_STAT_SHOW_PANEL=1` | Show the panel at launch, instead of waiting for a click. |
 | `TMUX_SIDEBAR_STATE_DIR` | Selects another directory for terminal recovery, logs, and runtime state. |
 

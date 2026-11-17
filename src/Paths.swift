@@ -16,8 +16,13 @@ enum Paths {
         eventsDirectory.appendingPathComponent("hosts")
     }
 
+    /// Overridable so a test run cannot write into the log you read.
     static var logURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        if let override = ProcessInfo.processInfo.environment["AGENT_STAT_LOG"],
+           !override.isEmpty {
+            return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/agent-stat.log")
     }
 

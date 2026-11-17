@@ -8,6 +8,8 @@ BIN="$HERE/.build/unit-tests"
 HOOK="$HERE/hooks/agent-stat-hook.sh"
 
 mkdir -p "$HERE/.build"
+# Tests and probes log through the app code. Keep that out of the real log.
+export AGENT_STAT_LOG="$HERE/.build/test.log"
 
 # Guard every deployed script before anything else. One implementation, in a
 # script, because the commit hook runs the same rule.
