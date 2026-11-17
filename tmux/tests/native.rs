@@ -1906,6 +1906,15 @@ fn shared_sidebars_keep_mouse_keyboard_new_windows_and_service_recovery() {
             .as_str(),
         "" | "0"
     ));
+    // Up moves from the highlighted row. The new sidebar can first draw rows read
+    // before the click, with the old window highlighted, and a later read moves
+    // the highlight to the active window. Send keys only once it has.
+    client.wait("new shared sidebar highlights the active window", || {
+        sandbox
+            .tmux(&["capture-pane", "-p", "-e", "-t", &next_sidebar])
+            .lines()
+            .any(|line| line.contains("Second content") && line.contains("\x1b[7m"))
+    });
     sandbox.tmux(&["select-pane", "-t", &next_sidebar]);
     client.send(b"\x1b[A\r");
     client.wait("shared sidebar keyboard selects first content", || {
@@ -2157,6 +2166,12 @@ impl Client {
             self.drain(Duration::from_millis(10));
         }
         panic!("Timed out: {description}");
+    }
+    /// Read until the terminal goes quiet. A prompt redraws its own text on every
+    /// key, so text from the last prompt can still be unread when the next one
+    /// opens, and `expect` would match the old prompt.
+    fn settle(&mut self) {
+        while !self.drain(Duration::from_millis(150)).is_empty() {}
     }
     fn expect(&mut self, text: &str) -> Duration {
         let started = std::time::Instant::now();
@@ -2695,6 +2710,7 @@ fn rename_prompts_keep_names_literal() {
             let expected_window =
                 sandbox.tmux(&["display-message", "-p", "-t", &window, "#{window_name}"]);
             sandbox.tmux(&["rename-window", "-t", &window, "Before rename"]);
+            client.settle();
             let action = if route == "rename" { "rename" } else { "menu" };
             let action = sandbox
                 .command("rename", action)
@@ -3161,9 +3177,23 @@ fn recovery_preview_restores_an_older_snapshot() {
     let mut client = Client::attach(&sandbox, "source");
     client.drain(Duration::from_millis(800));
     client.send(b"\x02r");
-    client.expect("Snapshot 1 of 2");
-    client.send(b"2");
-    client.expect("Snapshot 2 of 2");
+    // The monitor saves on its own every 10 seconds, and the respawn above is a
+    // change it records. A slow run can hold three snapshots, so take the oldest.
+    let heading = regex::Regex::new(r"Snapshot 1 of (\d)").unwrap();
+    let started = std::time::Instant::now();
+    let mut output = Vec::new();
+    let total = loop {
+        assert!(
+            started.elapsed() < SETTLE,
+            "Missing terminal text: Snapshot 1 of"
+        );
+        output.extend(client.drain(Duration::from_millis(5)));
+        if let Some(found) = heading.captures(&String::from_utf8_lossy(&output)) {
+            break found[1].to_owned();
+        }
+    };
+    client.send(total.as_bytes());
+    client.expect(&format!("Snapshot {total} of {total}"));
     client.send(b"r");
     wait_for_file(&marker);
     client.wait("recovered session", || {
