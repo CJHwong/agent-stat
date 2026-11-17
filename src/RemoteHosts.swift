@@ -6,7 +6,7 @@ final class RemoteHosts {
     private let onChange: () -> Void
     private var streams: [RemoteStream] = []
     private var readers: [String: EventReader] = [:]
-    private var connections: [String: String] = [:]
+    private(set) var connections: [String: String] = [:]
     private var lastStatus: [String: Int] = [:]
 
     init(store: SessionStore, onChange: @escaping () -> Void) {

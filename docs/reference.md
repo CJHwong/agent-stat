@@ -30,7 +30,9 @@ red until you click it, or for 24 hours. A run the bridge closed before its turn
 ends like any other. A Codex you close with its tab sends no end record, so it clears as a
 vanished process.
 A click on a session whose process ended moves nothing, because its old pane can belong to
-something else now.
+something else now. For the same reason, a click on a row from another machine moves
+nothing while the stream from that machine is not connected. The row keeps the last
+status the stream sent, and a tmux restart there can give its pane to another run.
 
 ## What a row says
 

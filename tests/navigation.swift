@@ -279,3 +279,20 @@ func testAttachCommandSurvivesBothShells() {
         checkEqual(printed.output, "-u\nattach-session\n-t\n$3\n", "a local session attaches without ssh")
     }
 }
+
+func testNavigationNeedsLiveRemoteStatus() {
+    print("navigation: a remote pane is trusted only while its machine reports status")
+    var session = Session(key: SessionKey(host: "peer", id: "run"))
+    session.tmuxPane = "%3"
+    session.alive = true
+    check(Jumper.unconfirmedRefusal(for: session, connection: "connected") == nil,
+          "a live status lets the click select the pane")
+    check(Jumper.unconfirmedRefusal(for: session, connection: nil) == nil,
+          "a route without an event stream keeps working as before")
+    for state in ["offline", "catching up"] {
+        let refusal = Jumper.unconfirmedRefusal(for: session, connection: state)
+        check(refusal?.contains("peer") == true, "an \(state) stream refuses, because the pane may be another run")
+    }
+    session.isLocal = true
+    check(Jumper.unconfirmedRefusal(for: session, connection: "offline") == nil, "a local session is not gated")
+}

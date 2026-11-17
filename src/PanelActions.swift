@@ -31,6 +31,7 @@ extension AppDelegate {
         let started = ProcessInfo.processInfo.systemUptime
         let receipt = store.attentionReceipt(for: session, now: now)
         let refusal = TmuxTargeting.sharedPaneRefusal(for: session, among: store.visible(now: now))
+            ?? Jumper.unconfirmedRefusal(for: session, connection: remote.connections[session.key.host])
         let tabSnapshot = tabs
         model.status = "Jump to \(jumpLabel(for: session))"
         model.picker = nil

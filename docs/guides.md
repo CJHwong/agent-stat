@@ -46,6 +46,7 @@ Click a row and the panel takes you back to that session's terminal tab.
 | several tabs in that folder | Lists them by name and you pick. |
 | no tab in that folder | Raises Ghostty and says so. |
 | another machine, with a route | Selects the pane there over ssh, then brings the matching tab forward. |
+| another machine, its stream not connected | Says so, and moves nothing. |
 | another machine, no route | Says so, and moves nothing. |
 
 The tty is the exact handle. Ghostty 1.4.0 and later report the pty of every surface,

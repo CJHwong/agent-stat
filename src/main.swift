@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var store = SessionStore(localHost: Paths.localHostName())
     private let reader = EventReader()
     private let names = CodexTitles()
-    private lazy var remote = RemoteHosts(store: store) { [weak self] in self?.scheduleTick() }
+    lazy var remote = RemoteHosts(store: store) { [weak self] in self?.scheduleTick() }
 
     func applicationWillTerminate(_ notification: Notification) {
         remote.stop()

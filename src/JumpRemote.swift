@@ -1,6 +1,17 @@
 import Foundation
 
 extension Jumper {
+    /// Why a click must not touch the other machine yet: its stream is not connected.
+    ///
+    /// A pane id outlives its process, and a tmux restart hands it to another pane.
+    /// The live status is what marks a run dead, and an offline stream keeps the last
+    /// value it sent. The row then says alive while the pane may hold another run.
+    /// A route with no event stream reports no state, and keeps working as before.
+    static func unconfirmedRefusal(for session: Session, connection: String?) -> String? {
+        guard let host = session.onAnotherMachine, let connection, connection != "connected" else { return nil }
+        return "no live status from \(host), so its pane may hold another run"
+    }
+
     /// Select the pane on the other machine, then come back here for the tab.
     ///
     /// The other machine's half is the network call, and this machine's half is
