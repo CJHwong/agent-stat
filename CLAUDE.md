@@ -14,6 +14,7 @@ changing the code. Keep that split.
 | `cargo build --release --locked --manifest-path tmux/Cargo.toml` | Build the terminal executable. The Swift app does not require Cargo. |
 | `tmux/target/release/agent-stat-tmux install` | Preview terminal deployment without writes. |
 | `tmux/target/release/agent-stat-tmux install --shared --apply --reload --restart` | Deploy one shared renderer per server and replace sidebar processes. |
+| `tmux/target/release/agent-stat-tmux install --remote <host> --shared --apply` | The same install over ssh on a host with no checkout. Same flags, except `--home` and `--socket`. |
 | `python3 -m unittest discover -s tests -p 'test_stream_events.py'` | Tests the stream helper with isolated event files. |
 | `python3 tests/stream-probe.py` | Tests the actual Swift connection with a separate local writer. |
 | `python3 tests/stream-probe.py --ssh <peer>` | Runs the same checks with isolated source files on a second machine. |
@@ -113,6 +114,8 @@ Run the installer on each machine, or `--remote <host>` for a machine with no ch
 It deploys scripts under
 `~/.local/state/agent-stat/bin`, including `stream-events.py`.
 The terminal installer is separate. It deploys under `~/.agents/tmux/`.
+Its `--remote <host>` sends this binary over ssh and runs the install there in the login shell,
+because a Homebrew tmux is not on the plain ssh path.
 Keep `--shared` in terminal installation and upgrade commands to retain one renderer per server.
 Omitting the flag selects separate renderers.
 The shared service and input bindings live in `tmux/src/shared.rs` and `tmux/src/shared_input.rs`.

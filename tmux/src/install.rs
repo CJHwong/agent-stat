@@ -1,10 +1,11 @@
 use crate::{Options, commands, model, runtime as rt};
 use std::{
     collections::{HashMap, HashSet},
-    env, fs, io,
+    env, fs,
+    io::{self, Write},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     thread,
     time::Duration,
 };
@@ -31,7 +32,65 @@ fn backup(home: &Path, path: &Path, root: &Path) -> io::Result<()> {
     fs::copy(path, &target)?;
     fs::set_permissions(target, fs::Permissions::from_mode(0o600))
 }
+/// Install this binary on another machine over ssh.
+///
+/// That machine has no checkout, so a hand copy was the only way a build reached
+/// it, and a missed copy left an old build running there. The binary travels on
+/// standard input into a temporary file there, which runs this same installer and
+/// is then removed. The command runs in the login shell because the installer
+/// looks for tmux, and a Mac with Homebrew has none on the plain ssh path. Without
+/// it the installer reads a live server as absent, skips the reload, and removes
+/// files that server still uses.
+fn remote(host: &str, flags: &[String]) -> io::Result<()> {
+    if host.is_empty() || host.starts_with('-') {
+        return Err(io::Error::other(format!(
+            "--remote wants a host name, not {host:?}"
+        )));
+    }
+    // Only plain flags reach this command, so nothing in it needs quoting.
+    let command = format!(
+        "file=$(mktemp) || exit 1; cat > \"$file\" && chmod 700 \"$file\" \
+         && \"$SHELL\" -lc '\"$0\" install {}' \"$file\"; code=$?; rm -f \"$file\"; exit $code",
+        flags.join(" ")
+    );
+    let mut child = Command::new("ssh")
+        .args(["-T", host, &command])
+        .stdin(Stdio::piped())
+        .spawn()?;
+    let mut input = child
+        .stdin
+        .take()
+        .ok_or_else(|| io::Error::other("Missing ssh input"))?;
+    input.write_all(&fs::read(env::current_exe()?)?)?;
+    drop(input);
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "Remote install on {host} failed: {status}"
+        )));
+    }
+    Ok(())
+}
+
 pub fn run() -> io::Result<()> {
+    let given: Vec<String> = env::args().skip(2).collect();
+    if let Some(at) = given.iter().position(|argument| argument == "--remote") {
+        let host = given.get(at + 1).cloned().unwrap_or_default();
+        let flags: Vec<String> = given
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != at && *index != at + 1)
+            .map(|(_, argument)| argument.clone())
+            .collect();
+        let allowed = ["--apply", "--shared", "--reload", "--restart"];
+        if let Some(other) = flags.iter().find(|flag| !allowed.contains(&flag.as_str())) {
+            return Err(io::Error::other(format!(
+                "--remote takes only {}, not {other}",
+                allowed.join(", ")
+            )));
+        }
+        return remote(&host, &flags);
+    }
     let mut home = rt::home()?;
     let mut apply = false;
     let mut reload = false;

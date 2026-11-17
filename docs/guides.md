@@ -198,6 +198,8 @@ Quit it with a right click on the icon, or `killall AgentStat`.
 1. From this checkout, run `python3 install.py --remote <host> --apply`. It runs the same
    install over ssh on the second machine, which needs no checkout. Run it again after a
    change to `hooks/` or `scripts/stream-events.py`.
+   If you use the tmux sidebar there, also run
+   `tmux/target/release/agent-stat-tmux install --remote <host> --shared --apply`.
 2. Install hooks for each additional Claude or Codex profile that you use.
 3. Add an `events` command to that host's route on the receiving machine.
 4. Relaunch the receiving app. Check that it receives events from the second machine.

@@ -134,6 +134,7 @@ python3 -m unittest discover -s "$HERE/tests" -p 'test_*.py'
 python3 "$HERE/tests/stream-lifecycle-probe.py" --quick
 if command -v cargo >/dev/null 2>&1; then
     cargo test --locked --manifest-path "$HERE/tmux/Cargo.toml" --bin agent-stat-tmux --quiet
+    cargo test --locked --manifest-path "$HERE/tmux/Cargo.toml" --test remote_install --quiet
     if command -v tmux >/dev/null 2>&1; then
         cargo test --locked --manifest-path "$HERE/tmux/Cargo.toml" --test native --quiet -- --test-threads=2
     else

@@ -225,7 +225,7 @@ fn run() -> io::Result<()> {
     }
     if env::args().any(|argument| matches!(argument.as_str(), "--help" | "-h")) {
         println!(
-            "agent-stat-tmux install [--home DIR] [--shared] [--apply] [--reload] [--restart]\nagent-stat-tmux --socket PATH --session NAME [--pane ID] ACTION\nActions: render, search-ui, enable, toggle, menu, snapshot, plan, restore, recover\nrestore --rerun PANE explicitly reruns one saved command.\nplan and restore --snapshot N pick saved snapshot N, 1 is the newest (default) and 5 the oldest."
+            "agent-stat-tmux install [--home DIR] [--shared] [--apply] [--reload] [--restart]\nagent-stat-tmux install --remote HOST [--shared] [--apply] [--reload] [--restart]\nagent-stat-tmux --socket PATH --session NAME [--pane ID] ACTION\nActions: render, search-ui, enable, toggle, menu, snapshot, plan, restore, recover\nrestore --rerun PANE explicitly reruns one saved command.\nplan and restore --snapshot N pick saved snapshot N, 1 is the newest (default) and 5 the oldest."
         );
         return Ok(());
     }

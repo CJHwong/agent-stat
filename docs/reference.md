@@ -119,6 +119,7 @@ If the index is missing or unreadable, the hook still writes the event without a
 | `python3 install.py --remote <host> --apply` | Runs the same install over ssh on another host, which needs no checkout. |
 | `tmux/target/release/agent-stat-tmux install` | Prints the terminal installation plan without writes. |
 | `tmux/target/release/agent-stat-tmux install --shared --apply --reload --restart` | Installs one shared renderer per tmux server; preserves running content processes. |
+| `tmux/target/release/agent-stat-tmux install --remote <host> --shared --apply` | Runs the same install over ssh on another host, which needs no checkout. |
 | `bash scripts/test.sh` | Checks the panel, shared helpers, and terminal component, then builds the app. |
 | `AGENT_STAT_DIR` | Point the app at another events directory. |
 | `AGENT_STAT_ROUTES` | Point the app at another routes file. |
